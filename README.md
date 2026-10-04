@@ -8,20 +8,15 @@ Le prototype contient les fonctions décrites dans ce guide. Le dernier APK debu
 
 ## Démarrer sur Windows
 
+Pour un premier essai pas à pas, suivez le **[guide de démarrage et simulation sur PC / Samsung](docs/startup-guide.md)** : création de l’émulateur Android, préparation de la voix, démo sans courir, installation sur téléphone et passage au GPS réel.
+
 ### Ce PC
 
 Les outils nécessaires sont déjà présents dans `.tools/` sur le PC de développement. Ouvrez PowerShell dans le dépôt et passez aux commandes ci-dessous. Android Studio n’est pas nécessaire pour compiler avec le SDK local déjà installé; il reste utile pour gérer le SDK par interface graphique ou créer un émulateur. `flutter doctor` peut montrer des avertissements de PATH ou signaler Visual Studio : ils ne bloquent pas le build Android avec le wrapper local.
 
 ### Préparer un nouveau PC Windows
 
-Installez [Git pour Windows](https://git-scm.com/download/win), [Visual Studio Code](https://code.visualstudio.com/Download) et [Android Studio](https://developer.android.com/studio). Clonez ce dépôt, ouvrez-le dans VS Code et acceptez ses extensions suggérées Dart/Flutter et PowerShell (`.vscode/extensions.json`). Installez Flutter 3.47.6 depuis l’[archive officielle Flutter](https://docs.flutter.dev/install/archive) dans `.tools/flutter`, ou depuis PowerShell à la racine du dépôt :
-
-```powershell
-New-Item -ItemType Directory -Force .tools | Out-Null
-git clone --depth 1 --branch 3.47.6 https://github.com/flutter/flutter.git .tools/flutter
-```
-
-Dans Android Studio > **Tools > SDK Manager**, installez Android SDK Platform 35 et 36, Build Tools 36.0.0, NDK 28.2.13676358 et CMake 3.22.1; acceptez les licences. Choisissez `.tools/android-sdk` comme SDK Android si vous souhaitez utiliser les chemins locaux du dépôt. Le projet utilise Java 17: vous pouvez utiliser le JDK fourni avec Android Studio ou Temurin 17. Si `.tools/jdk` n’existe pas, définissez `JAVA_HOME` vers le JDK 17 ou le JBR d’Android Studio dans la session PowerShell avant `build` ou `run`; le wrapper en a besoin pour appeler `keytool`. Il ne modifie pas le PATH Windows global. Aucun script ne télécharge automatiquement tous ces prérequis sur un nouveau PC.
+Suivez **[le guide complet d’installation sur un nouveau PC](docs/new-pc-setup.md)**. Il couvre Git, VS Code, Flutter 3.47.6, JDK 17, Android Studio, les composants SDK, les chemins locaux, l’émulateur, la première modification et la validation. Les outils et l’APK ne sont pas fournis par Git; aucun script ne télécharge automatiquement tous ces prérequis.
 
 Le wrapper local configure les chemins quand les dossiers `.tools/` sont installés :
 
@@ -71,6 +66,8 @@ Les données d’itinéraire sont sensibles. Pour les exemples, journaux, captur
 
 ## Guides
 
+- [docs/new-pc-setup.md](docs/new-pc-setup.md) : installer tous les prérequis sur un nouveau PC et commencer à modifier le code.
+- [docs/startup-guide.md](docs/startup-guide.md) : premier lancement, simulation sur PC et Samsung, résultats attendus et dépannage.
 - [PLAN.md](PLAN.md) : fonctions réalisées, limites, vérification.
 - [STRUCTURE.md](STRUCTURE.md) : architecture du code.
 - [docs/android.md](docs/android.md) : installation, permissions, voix et dépannage Samsung.

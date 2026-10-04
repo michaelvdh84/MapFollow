@@ -1,14 +1,14 @@
 # Android : installation, permissions et dépannage
 
+Pour effectuer votre premier essai, commencez par [le guide de démarrage et simulation sur PC / Samsung](startup-guide.md). Ce document détaille les prérequis et le fonctionnement Android.
+
 ## Installer les outils
 
 Le dépôt contient des copies locales de Flutter, Android SDK et Java sous `.tools/`. Le script `scripts/flutter.ps1` prépare les chemins et caches locaux pour chaque commande. `.tools/` est un dossier d’outils et n’est pas destiné à être versionné.
 
 ### Préparer un nouveau PC
 
-Installez [Git pour Windows](https://git-scm.com/download/win), [VS Code](https://code.visualstudio.com/Download) et [Android Studio](https://developer.android.com/studio). Ouvrez le dépôt cloné dans VS Code et installez ses extensions suggérées dans `.vscode/extensions.json`. Téléchargez Flutter 3.47.6 depuis l’[archive officielle](https://docs.flutter.dev/install/archive) vers `.tools/flutter`, ou clonez le tag avec `git clone --depth 1 --branch 3.47.6 https://github.com/flutter/flutter.git .tools/flutter` après avoir créé `.tools`.
-
-Dans Android Studio > **Tools > SDK Manager**, installez les plateformes Android 35 et 36, Build Tools 36.0.0, NDK 28.2.13676358 et CMake 3.22.1; utilisez `.tools/android-sdk` comme dossier SDK et acceptez les licences. Java 17 peut venir de Temurin ou du JBR Android Studio. Si `.tools/jdk` n’existe pas, définissez `JAVA_HOME` vers ce JDK/JBR dans la session PowerShell avant d’exécuter `build` ou `run`, car ces commandes appellent `keytool` pour générer une clé de débogage locale. Le wrapper ne modifie pas le PATH Windows global. Consultez aussi [les étapes illustrées du README](../README.md#préparer-un-nouveau-pc-windows).
+Suivez [le guide complet d’installation et de développement sur un nouveau PC Windows](new-pc-setup.md). Il définit les chemins `.tools/flutter`, `.tools/jdk` (JDK 17) et `.tools/android-sdk`, puis explique la configuration Flutter et VS Code, les validations et la première modification. Le Java intégré d’Android Studio sert à l’IDE; il n’est pas supposé être un JDK 17 pour le projet.
 
 Pour débuter, Android Studio est la méthode la plus simple pour installer/mettre à jour les plateformes Android, outils de compilation, NDK et licences : ouvrez **Tools > SDK Manager**, sélectionnez les composants demandés si nécessaire, puis acceptez les licences dans l’interface. Le SDK configuré pour le projet cible Android API 36, compile/target 36, minimum Android 26, Build Tools 36.0.0 et NDK 28.2.13676358. Java est Temurin 17.0.20.1, Android Gradle Plugin 9.1 et Kotlin 2.4.
 
