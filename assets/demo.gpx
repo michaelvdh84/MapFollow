@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="MapFollow synthetic fixture" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata><name>Démo synthétique — ne pas suivre sur le terrain</name></metadata>
+  <trk><name>Démo synthétique</name><trkseg>
+    <trkpt lat="50.0000" lon="4.0000"/><trkpt lat="50.0002" lon="4.0000"/>
+    <trkpt lat="50.0004" lon="4.0000"/><trkpt lat="50.0006" lon="4.0000"/>
+    <trkpt lat="50.0008" lon="4.0000"/><trkpt lat="50.0010" lon="4.0000"/>
+    <trkpt lat="50.0010" lon="4.0003"/><trkpt lat="50.0010" lon="4.0006"/>
+    <trkpt lat="50.0010" lon="4.0009"/><trkpt lat="50.0010" lon="4.0012"/>
+    <trkpt lat="50.0010" lon="4.0015"/><trkpt lat="50.0012" lon="4.0015"/>
+    <trkpt lat="50.0014" lon="4.0015"/><trkpt lat="50.0016" lon="4.0015"/>
+    <trkpt lat="50.0018" lon="4.0015"/><trkpt lat="50.0020" lon="4.0015"/>
+  </trkseg></trk>
+</gpx>
