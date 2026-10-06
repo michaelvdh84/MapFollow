@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mapfollow/data/route_importer.dart';
+import 'package:mapfollow/domain/models.dart';
 
 String fixture(String name) => File('test/fixtures/$name').readAsStringSync();
 
@@ -131,6 +132,41 @@ void main() {
       expect(
         () => importer.parse(xml.toString(), fileName: 'many.gpx'),
         throwsA(isA<RouteImportException>()),
+      );
+    });
+    test('accepts traversal only from exact versioned namespace and values', () {
+      const uri = 'https://github.com/michaelvdh84/MapFollow/xmlns/1';
+      for (final (namespace, value, expected) in [
+        (uri, 'outbound', TraversalDirection.outbound),
+        (uri, 'returning', TraversalDirection.returning),
+        (uri, 'OUTBOUND', null),
+        (uri, 'invalid', null),
+        ('urn:foreign', 'outbound', null),
+        (
+          'https://github.com/michaelvdh84/MapFollow/xmlns/2',
+          'returning',
+          null,
+        ),
+      ]) {
+        final xml =
+            '<gpx xmlns:x="$namespace"><trk><trkseg>'
+            '<trkpt lat="1" lon="1"><extensions><x:traversalDirection>$value</x:traversalDirection></extensions></trkpt>'
+            '<trkpt lat="1" lon="1.001"/></trkseg></trk></gpx>';
+        final route = importer.parse(xml, fileName: 'synthetic.gpx').single;
+        expect(route.segments.single.points.first.traversal, expected);
+      }
+      const unscoped =
+          '<gpx><trk><trkseg><trkpt lat="1" lon="1"><extensions><traversalDirection>outbound</traversalDirection></extensions></trkpt><trkpt lat="1" lon="1.001"/></trkseg></trk></gpx>';
+      expect(
+        importer
+            .parse(unscoped, fileName: 'synthetic.gpx')
+            .single
+            .segments
+            .single
+            .points
+            .first
+            .traversal,
+        isNull,
       );
     });
   });

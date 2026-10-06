@@ -47,6 +47,15 @@ class MemoryRepository implements RunRepository {
   }
 
   @override
+  Future<void> saveRunWithRoute(RunSession session, {Route? route}) async {
+    if (failWrites || !runs.containsKey(session.id)) {
+      throw StateError('Synthetic disk failure');
+    }
+    runs[session.id] = session.toJson();
+    if (route != null) routes[route.id] = route;
+  }
+
+  @override
   Future<void> appendFix(
     RunSession session,
     LocationFix fix,

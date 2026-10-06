@@ -59,7 +59,7 @@ Ces réglages se font **dans l’émulateur ou sur le téléphone**, pas dans Wi
 2. Choisissez un moteur disponible et installez ses données vocales **françaises hors connexion**. Un moteur absent peut être installé depuis le Play Store; ses menus dépendent de l’image Android et du téléphone.
 3. Augmentez le volume multimédia. Dans MapFollow, ouvrez **Réglages**, ajustez le volume et utilisez **Tester la voix enregistrée**.
 
-Résultat attendu : une phrase française est audible. Sans voix française locale reconnue, MapFollow refuse de démarrer la course, y compris la simulation. Voir [le dépannage vocal](android.md#voix-et-podcasts).
+Résultat attendu : une phrase française est audible. La voix française est nécessaire aux courses guidées (y compris la simulation d’un parcours); une course libre n’utilise pas la voix. Voir [le dépannage vocal](android.md#voix-et-podcasts).
 
 ## 4. Faire la première simulation sans courir
 
@@ -73,6 +73,14 @@ Le scénario est identique sur PC et sur Android physique :
 6. Touchez **Pause** : les positions et les annonces s’arrêtent. Touchez **Reprendre** : un nouveau segment d’enregistrement commence.
 7. Laissez la simulation atteindre l’arrivée; elle termine automatiquement la session. Vous pouvez aussi utiliser **Terminer** et confirmer.
 8. Dans **Historique**, la course porte le préfixe **SIMULATION**. Touchez **Exporter le GPX**, puis choisissez une application de destination dans la feuille de partage Android. Les possibilités de partage dépendent des applications installées.
+
+Pour essayer l’enregistrement sans itinéraire, dans **Parcours** ou **Course**, touchez **Lancer un Run libre** pour recevoir le GPS réel, ou **Simuler un Run libre** pour employer le trajet synthétique déterministe. La simulation fait deux passages aller-retour sur le même tracé en utilisant le pipeline de positions normal. Le mode libre ne demande aucune voix et n’annonce pas de guidage. Le GPS réel affiche la notification Android habituelle; ses avertissements de qualité restent visibles dans l’écran. La simulation ne démarre pas le service Android au premier plan. Une course libre terminée dont un même segment contient au moins deux positions distinctes apparaît dans l’historique et comme parcours enregistré; les sessions trop courtes restent dans l’historique sans parcours. Les pauses et reprises créent des segments distincts.
+
+Après **Terminer**, l’écran affiche **Run terminé**. Si un parcours a été créé, touchez **Voir le parcours** pour le retrouver dans Parcours. **Renommer** met aussi à jour le nom de la session; pour une simulation, le préfixe `SIMULATION` est conservé. **Exporter / partager** ouvre la feuille de partage avec un GPX enrichi. Si la trace ne contient pas assez de points, elle reste disponible dans l’historique, mais l’export n’est pas proposé.
+
+Dans **Réglages**, le menu **Profil GPS de la prochaine course** propose **Précision · 1 s / 2 m**, **Équilibré · 2 s / 3 m** (défaut) et **Autonomie · 5 s / 5 m**. Ce sont des demandes à Android, pas des garanties d’intervalle ni de durée de batterie. La session garde le choix fait à son démarrage. Pendant une course, les commandes **Auto**, **Aller** et **Retour** classent les prochains points enregistrés; dans le mode guidé, elles ne retournent pas le sens du parcours importé. La carte permet de masquer les couches Aller et Retour. L’écran présente vitesse et allure live à partir des vitesses GPS récentes; le résumé utilise distance et durée active.
+
+Pendant un Run GPS réel, ouvrez **Diagnostics GNSS** pour voir les satellites vus/utilisés par constellation lorsque Android les fournit. Le téléphone choisit ses constellations; ce panneau observe le GNSS déjà actif, ne démarre pas une autre requête de position et ne conserve aucun relevé. Il ne s’ouvre pas en simulation et signale les données périmées après 10 s. Ces nombres ne sont pas une mesure de précision GPS.
 
 Résultat attendu : une course simulée enregistrée, avec des points horodatés et un GPX exportable. La démo est une géométrie synthétique destinée aux essais; ne la suivez pas sur le terrain.
 
@@ -130,7 +138,7 @@ Préparez la voix selon la section 3, puis refaites exactement la simulation de 
 | GPS réel sur Samsung, écran verrouillé | Service persistant, permissions, tenue en poche et restrictions Samsung |
 | Course réelle et casque Bluetooth | Qualité GPS, guidage, autonomie et comportement du lecteur audio |
 
-La simulation suit parfaitement le tracé : aucun réglage de l’interface ne permet actuellement d’injecter une sortie de parcours, du bruit GPS ou une perte de signal. Ces cas disposent de tests automatisés. La simulation n’utilise pas le service GPS persistant; la verrouiller ne valide donc pas le maintien du guidage en poche.
+La simulation guidée suit le tracé importé; la simulation du Run libre fait deux passages aller-retour synthétiques. L’interface ne permet pas d’injecter une sortie de parcours, du bruit GPS ou une perte de signal; les règles correspondantes sont couvertes par des tests automatisés, mais ceux de la version courante restent à consigner dans [le journal](verification.md). Aucune simulation n’utilise le service GPS persistant; la verrouiller ne valide donc pas le maintien du GPS en poche.
 
 Pour le GPS réel, terminez la simulation, importez un parcours réel, placez-vous près de son départ et touchez **Démarrer avec le GPS**. Accordez la localisation précise pendant l’utilisation et les notifications. Vérifiez la notification persistante et une précision exploitable, puis testez l’écran verrouillé. Avec votre lecteur musical/podcast, vérifiez la baisse du volume pendant les annonces; certains lecteurs peuvent se mettre en pause. Relevez vos observations dans [la fiche terrain](field-validation.md).
 
@@ -151,9 +159,9 @@ Les tests de navigation couvrent notamment les seuils, les croisements et les al
 
 - **`unauthorized` dans `adb devices`** : déverrouillez le Samsung et acceptez l’autorisation USB; rebranchez si le dialogue n’apparaît pas.
 - **Aucun Samsung détecté** : essayez un câble de données, vérifiez le débogage USB et, si nécessaire, installez le [pilote USB Samsung officiel](https://developer.samsung.com/android-usb-driver).
-- **Aucune voix / démarrage refusé** : installez une voix française hors connexion et relancez le test vocal avant la course.
+- **La voix manque / démarrage guidé refusé** : installez une voix française hors connexion et relancez le test vocal. Une course guidée (y compris sa simulation) exige la voix; le Run libre ne l’utilise pas.
 - **Carte vide** : vérifiez Internet et utilisez le bouton de nouvelle tentative proposé par la carte; le déplacement simulé ne dépend pas des tuiles.
 - **Boutons de démarrage grisés** : terminez la session active ou traitez la proposition de récupération d’une course interrompue.
 - **Suivi arrêté en poche** : consultez [le dépannage Samsung](android.md#samsung--dépannage) et notez Android/One UI et les réglages observés.
 
-État de ce guide au 4 octobre 2026 : étapes alignées sur le code et les guides officiels. Aucun émulateur Android n’était installé ni aucun Samsung connecté pendant sa rédaction; le parcours interactif complet reste à exécuter sur ces appareils.
+Les contrôles connus de la version `0.2.0+2` ne valident pas le code courant `0.3.0+3`. Aucun essai manuel sur émulateur, Samsung ou partage Android réel n’est confirmé pour cette version. Consultez [le journal de vérification](verification.md) et [la fiche terrain](field-validation.md) avant de consigner de nouveaux résultats.

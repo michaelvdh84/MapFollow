@@ -1,7 +1,7 @@
 name: mapfollow
 description: Guidage vocal et suivi local de parcours de trail.
 publish_to: none
-version: 0.1.0+1
+version: 0.3.0+3
 environment:
   sdk: '>=3.10.0 <4.0.0'
 dependencies:

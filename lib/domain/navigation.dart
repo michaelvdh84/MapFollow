@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'geo.dart';
 import 'models.dart';
+import 'location_quality.dart';
 
 class RouteEdge {
   RouteEdge(this.a, this.b, this.start, this.segment)
@@ -173,19 +174,14 @@ class NavigationEngine {
   DateTime? _lastOffRouteWarning;
 
   NavigationUpdate update(LocationFix fix, {required DateTime now}) {
-    final age = now.difference(fix.timestamp);
-    final reliable =
-        fix.accuracy.isFinite &&
-        fix.accuracy >= 0 &&
-        fix.accuracy <= 25 &&
-        age.inMilliseconds >= -2000 &&
-        age.inSeconds <= 10;
+    final reliable = LocationQuality.accepts(
+      fix,
+      now: now,
+      previous: _previous,
+    );
     if (!reliable || prepared.edges.isEmpty) {
       _outsideCount = 0;
       _insideCount = 0;
-      return _result(false, double.infinity, accepted: false);
-    }
-    if (_previous != null && !fix.timestamp.isAfter(_previous!.timestamp)) {
       return _result(false, double.infinity, accepted: false);
     }
     final elapsed = _previous == null
@@ -194,17 +190,13 @@ class NavigationEngine {
     final moved = _previous == null
         ? 0.0
         : distanceBetween(_previous!.point, fix.point);
-    if (_previous != null &&
-        moved > 12 * elapsed + fix.accuracy + _previous!.accuracy) {
-      return _result(false, double.infinity, accepted: false);
-    }
     // Heading from movement is more stable than compass/GPS heading at rest.
     final heading = _previous != null && moved > 5
         ? bearingBetween(_previous!.point, fix.point)
         : null;
     final forward = math.min(
       500.0,
-      math.max(150.0, elapsed * math.max(fix.speed, 3) * 2 + 50),
+      math.max(150.0, elapsed * math.max(fix.speed ?? 3, 3) * 2 + 50),
     );
     RouteEdge? best;
     var offset = double.infinity, matched = progress, score = double.infinity;

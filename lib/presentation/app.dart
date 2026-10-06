@@ -5,12 +5,10 @@ import '../domain/geo.dart';
 import '../domain/models.dart' as domain;
 import '../domain/navigation.dart';
 import 'route_map.dart';
-
-String metres(double value) => value >= 1000
-    ? '${(value / 1000).toStringAsFixed(2)} km'
-    : '${value.round()} m';
-String duration(int seconds) =>
-    '${(seconds ~/ 3600).toString().padLeft(2, '0')}:${(seconds ~/ 60 % 60).toString().padLeft(2, '0')}:${(seconds % 60).toString().padLeft(2, '0')}';
+import 'free_run_screen.dart';
+import 'formatters.dart';
+import 'running_metrics.dart';
+import 'run_tracking_controls.dart';
 
 class MapFollowApp extends StatelessWidget {
   const MapFollowApp({super.key, required this.controller});
@@ -84,7 +82,7 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () => showLicensePage(
               context: context,
               applicationName: 'MapFollow',
-              applicationVersion: '0.1.0',
+              applicationVersion: '0.3.0',
               applicationLegalese:
                   'Carte : © OpenStreetMap contributors · ODbL',
             ),
@@ -196,6 +194,13 @@ class _HomeScreenState extends State<HomeScreen> {
         'Importez votre parcours, vérifiez les virages, puis lancez le guidage.',
       ),
       const SizedBox(height: 20),
+      FreeRunActions(
+        controller: c,
+        onStarted: () {
+          if (mounted) setState(() => _page = 1);
+        },
+      ),
+      const SizedBox(height: 16),
       FilledButton.icon(
         onPressed: c.busy || c.session != null ? null : _import,
         icon: const Icon(Icons.file_open_outlined),
@@ -246,14 +251,62 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _run() {
     final route = c.selectedRoute;
-    if (route == null) {
-      return const Center(child: Text('Choisissez ou importez un parcours.'));
+    if (route == null ||
+        c.session?.mode == domain.RunMode.free ||
+        (c.session == null && c.lastFinished?.mode == domain.RunMode.free)) {
+      return FreeRunScreen(controller: c, onViewRoute: _viewRoute);
     }
     final run = c.session;
     final nav = c.navigation;
+    final finished =
+        run == null &&
+            c.lastFinished?.mode == domain.RunMode.guided &&
+            c.lastFinished?.routeId == route.id
+        ? c.lastFinished
+        : null;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        if (run == null) ...[
+          if (finished != null) ...[
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Course guidée terminée',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    if (finished.simulated)
+                      const Text('SIMULATION — données synthétiques.'),
+                    const SizedBox(height: 8),
+                    RunningMetrics(
+                      activeSeconds: finished.activeSeconds,
+                      distance: finished.distance,
+                      metresPerSecond: finished.activeSeconds > 0
+                          ? finished.distance / finished.activeSeconds
+                          : null,
+                      summary: true,
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: c.busy
+                          ? null
+                          : () => c.perform(() => c.exportRun(finished.id)),
+                      icon: const Icon(Icons.ios_share),
+                      label: const Text('Exporter le GPX'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+          FreeRunActions(controller: c),
+          const SizedBox(height: 16),
+        ],
         Text(route.name, style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 8),
         if (run?.simulated == true)
@@ -295,35 +348,23 @@ class _HomeScreenState extends State<HomeScreen> {
             child: RouteMap(
               key: ValueKey(route.id),
               route: route,
-              fix: c.lastFix,
+              fix: c.mapFix,
               recorded: run?.segments ?? const [],
               active: c.running,
+              plannedRoute: run != null,
             ),
           ),
         ),
         const SizedBox(height: 12),
         if (run != null)
-          Row(
-            children: [
-              Expanded(
-                child: _Metric(
-                  label: 'Durée active',
-                  value: duration(c.elapsedSeconds),
-                ),
-              ),
-              Expanded(
-                child: _Metric(
-                  label: 'Distance courue',
-                  value: metres(run.distance),
-                ),
-              ),
-              Expanded(
-                child: _Metric(
-                  label: 'Reste sur tracé',
-                  value: metres(nav?.remaining ?? c.prepared!.length),
-                ),
-              ),
-            ],
+          RunningMetrics(
+            activeSeconds: c.elapsedSeconds,
+            distance: run.distance,
+            metresPerSecond: c.currentSpeedMetresPerSecond,
+          ),
+        if (run != null)
+          Text(
+            'Reste sur tracé : ${metres(nav?.remaining ?? c.prepared!.length)}',
           ),
         if (run != null)
           Padding(
@@ -398,7 +439,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 'À ${metres(cue.distance)} · ${cue.cue.estimated ? 'estimée' : 'fournie par le fichier'}',
               ),
             ),
-        ] else
+        ] else ...[
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -442,6 +483,9 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
+          const SizedBox(height: 16),
+          RunTrackingControls(controller: c),
+        ],
       ],
     );
   }
@@ -465,11 +509,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${run.simulated ? 'SIMULATION · ' : ''}${c.routes.where((r) => r.id == run.routeId).firstOrNull?.name ?? 'Course'}',
+                    c.runName(run),
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   Text(
-                    '${run.startedAt.toLocal().day}/${run.startedAt.toLocal().month}/${run.startedAt.toLocal().year} · ${metres(run.distance)} · ${duration(run.activeSeconds)}',
+                    '${run.startedAt.toLocal().day}/${run.startedAt.toLocal().month}/${run.startedAt.toLocal().year}',
+                  ),
+                  RunningMetrics(
+                    activeSeconds: run.activeSeconds,
+                    distance: run.distance,
+                    metresPerSecond: run.activeSeconds > 0
+                        ? run.distance / run.activeSeconds
+                        : null,
+                    summary: true,
                   ),
                   Text(
                     run.status == domain.RunStatus.finished
@@ -477,13 +529,22 @@ class _HomeScreenState extends State<HomeScreen> {
                         : 'Course récupérable',
                   ),
                   const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    onPressed: c.busy || run.status != domain.RunStatus.finished
-                        ? null
-                        : () => c.perform(() => c.exportRun(run.id)),
-                    icon: const Icon(Icons.ios_share),
-                    label: const Text('Exporter le GPX'),
-                  ),
+                  if (run.mode == domain.RunMode.free &&
+                      run.status == domain.RunStatus.finished)
+                    RunHistoryActions(
+                      controller: c,
+                      run: run,
+                      onViewRoute: _viewRoute,
+                    )
+                  else
+                    OutlinedButton.icon(
+                      onPressed:
+                          c.busy || run.status != domain.RunStatus.finished
+                          ? null
+                          : () => c.perform(() => c.exportRun(run.id)),
+                      icon: const Icon(Icons.ios_share),
+                      label: const Text('Exporter le GPX'),
+                    ),
                 ],
               ),
             ),
@@ -491,6 +552,11 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
     ],
   );
+
+  void _viewRoute(domain.Route route) {
+    c.selectRoute(route);
+    setState(() => _page = 1);
+  }
 }
 
 class SettingsScreen extends StatefulWidget {
@@ -502,6 +568,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late double _warning, _offset, _volume;
+  late domain.LocationProfile _profile;
   @override
   void initState() {
     super.initState();
@@ -509,6 +576,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _warning = s.warningDistance;
     _offset = s.offRouteDistance;
     _volume = s.voiceVolume;
+    _profile = s.locationProfile;
   }
 
   @override
@@ -521,6 +589,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Text(
           'Un guidage à votre rythme',
           style: Theme.of(context).textTheme.headlineSmall,
+        ),
+        const SizedBox(height: 20),
+        DropdownButtonFormField<domain.LocationProfile>(
+          initialValue: _profile,
+          decoration: const InputDecoration(
+            labelText: 'Profil GPS de la prochaine course',
+          ),
+          items: [
+            for (final profile in domain.LocationProfile.values)
+              DropdownMenuItem(
+                value: profile,
+                child: Text(locationProfileLabel(profile)),
+              ),
+          ],
+          onChanged: !c.busy
+              ? (value) => setState(() => _profile = value!)
+              : null,
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Appliqué au prochain départ. La course actuelle conserve son profil GPS. Les intervalles sont des demandes au système et peuvent varier selon Android.',
         ),
         const SizedBox(height: 20),
         Text('Prévenir ${_warning.round()} m avant le virage'),
@@ -550,18 +639,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
           onChanged: enabled ? (v) => setState(() => _volume = v) : null,
         ),
         FilledButton(
-          onPressed: enabled
+          onPressed: !c.busy
               ? () => c.perform(
                   () => c.updateSettings(
-                    domain.GuidanceSettings(
-                      warningDistance: _warning,
-                      offRouteDistance: _offset,
-                      voiceVolume: _volume,
-                    ),
+                    c.running
+                        ? c.settings.copyWith(locationProfile: _profile)
+                        : c.settings.copyWith(
+                            warningDistance: _warning,
+                            offRouteDistance: _offset,
+                            voiceVolume: _volume,
+                            locationProfile: _profile,
+                          ),
                   ),
                 )
               : null,
-          child: const Text('Enregistrer les réglages'),
+          child: Text(
+            c.running
+                ? 'Enregistrer le profil de la prochaine course'
+                : 'Enregistrer les réglages',
+          ),
         ),
         const SizedBox(height: 8),
         OutlinedButton.icon(
@@ -571,7 +667,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         const SizedBox(height: 20),
         const _Notice(
-          'Installez une voix française hors connexion dans les réglages Android de synthèse vocale. La musique peut baisser pendant les annonces ; certains lecteurs de podcasts se mettent en pause.',
+          'Le guidage nécessite une voix française hors connexion. Le Run libre peut enregistrer sans voix. La musique peut baisser pendant les annonces ; certains lecteurs de podcasts se mettent en pause.',
         ),
         const SizedBox(height: 12),
         const _Notice(
@@ -581,7 +677,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Padding(
             padding: EdgeInsets.only(top: 12),
             child: Text(
-              'Mettez la course en pause pour modifier les réglages.',
+              'Mettez la course en pause pour modifier les seuils et la voix. Le profil GPS choisi s’applique à la prochaine course.',
             ),
           ),
       ],
@@ -596,17 +692,5 @@ class _Notice extends StatelessWidget {
   Widget build(BuildContext context) => Card(
     color: Theme.of(context).colorScheme.surfaceContainerHighest,
     child: Padding(padding: const EdgeInsets.all(14), child: Text(text)),
-  );
-}
-
-class _Metric extends StatelessWidget {
-  const _Metric({required this.label, required this.value});
-  final String label, value;
-  @override
-  Widget build(BuildContext context) => Column(
-    children: [
-      Text(value, style: Theme.of(context).textTheme.titleMedium),
-      Text(label, style: Theme.of(context).textTheme.bodySmall),
-    ],
   );
 }

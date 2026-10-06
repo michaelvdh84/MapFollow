@@ -61,11 +61,29 @@ L’application utilise un service de premier plan de localisation lorsqu’une 
 
 Si le suivi s’arrête, déverrouillez le téléphone, vérifiez l’autorisation de localisation et les réglages batterie de MapFollow, puis revenez à l’application. Une terminaison forcée ou un arrêt système peut créer une interruption; une session trouvée après redémarrage est proposée explicitement. Le prototype ne garantit pas une trace continue après un arrêt forcé.
 
+### Profils de localisation
+
+Dans **Réglages**, le profil s’applique au prochain Run et reste épinglé dans cette session, y compris lors d’une récupération. Un nouveau choix en Réglages ne change pas une course déjà commencée. Le profil par défaut est **Équilibré**.
+
+| Profil | Niveau de précision demandé | Cadence demandée | Filtre de distance demandé |
+|---|---|---:|---:|
+| Précision | `bestForNavigation` | 1 s | 2 m |
+| Équilibré | `high` | 2 s | 3 m |
+| Autonomie | `high` | 5 s | 5 m |
+
+Ces valeurs configurent la requête faite au système Android. Le fabricant, le système, la réception et les économies d’énergie peuvent faire varier la cadence réellement reçue; le profil Autonomie ne garantit donc pas une durée de batterie particulière. Pour comparer les profils, utilisez le même appareil, la même sortie et la même durée, puis consignez cadence observée, conditions GPS et niveau de batterie dans [la fiche terrain](field-validation.md).
+
+### Diagnostics GNSS
+
+Pendant une course GPS réelle, ouvrez **Diagnostics GNSS** pour consulter les nombres de satellites vus et utilisés, regroupés par constellation lorsque l’OS les expose. Le téléphone choisit les constellations; MapFollow ne les sélectionne pas. Le panneau observe le récepteur déjà actif, n’émet pas une seconde demande de position GPS et ne mémorise pas les relevés. Il requiert la permission de localisation déjà utilisée pour la course et n’en demande pas une autre.
+
+L’écoute existe seulement tant que le panneau est visible et l’activité Android reprise. En simulation, le diagnostic est signalé comme indisponible. Le panneau distingue les états inactif, attente de la première observation, permission requise, indisponible et instantané périmé (aucune mise à jour depuis plus de 10 secondes). Le nombre de satellites vus ou utilisés ne garantit pas la précision de la position; les critères de qualité affichés par la course restent séparés.
+
 ## Voix et podcasts
 
-Le service vocal dépend d’une voix française Android installée et utilisable hors ligne. Si elle manque, la course ne démarre pas et l’application affiche un message demandant de la télécharger. Dans Android, ouvrez **Paramètres > Gestion globale > Synthèse vocale**, choisissez le moteur disponible puis gérez/téléchargez la voix française dans ses réglages. Les noms des menus changent selon le téléphone.
+Le guidage vocal dépend d’une voix française Android installée et utilisable hors ligne. Si elle manque, le démarrage d’une course guidée est refusé; une course libre ne fait pas d’annonces et ne dépend pas de la synthèse vocale. Dans Android, ouvrez **Paramètres > Gestion globale > Synthèse vocale**, choisissez le moteur disponible puis gérez/téléchargez la voix française dans ses réglages. Les noms des menus changent selon le téléphone.
 
-MapFollow demande le focus audio Android `MAY_DUCK` pendant la parole et le libère ensuite. En pratique cela peut baisser le volume d’un podcast; certaines applications peuvent mettre le podcast en pause lors d’une interruption. Le pont natif signale les interruptions et arrête l’annonce. Testez avec votre lecteur habituel : le comportement dépend de celui-ci.
+En mode guidé, MapFollow demande le focus audio Android `MAY_DUCK` pendant la parole et le libère ensuite. En pratique cela peut baisser le volume d’un podcast; certaines applications peuvent mettre le podcast en pause lors d’une interruption. Le pont natif signale les interruptions et arrête l’annonce. Le Run libre ne prépare pas et n’appelle pas la voix. Testez le guidage avec votre lecteur habituel : le comportement dépend de celui-ci.
 
 ## Samsung : dépannage
 

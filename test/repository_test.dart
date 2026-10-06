@@ -15,6 +15,28 @@ void main() {
   });
   tearDown(() => repository.close());
   test(
+    'reads legacy run JSON as guided with empty name and no generated route',
+    () {
+      final run = RunSession.fromJson({
+        'id': 'legacy',
+        'routeId': 'route',
+        'startedAt': '2024-01-01T00:00:00.000Z',
+        'simulated': false,
+        'status': 'finished',
+        'endedAt': null,
+        'activeSeconds': 5,
+        'distance': 12.0,
+        'progress': 50.0,
+        'announcedCueIds': <String>[],
+      });
+      expect(run.mode, RunMode.guided);
+      expect(run.name, isEmpty);
+      expect(run.generatedRouteId, isNull);
+      expect(run.locationProfile, LocationProfile.precise);
+      expect(run.traversalControl, TraversalControl.automatic);
+    },
+  );
+  test(
     'round trips routes, settings, fixes and progress through real SQLite',
     () async {
       await repository.saveRoute(syntheticRoute());
@@ -23,14 +45,24 @@ void main() {
         3,
       );
       await repository.saveSettings(
-        const GuidanceSettings(warningDistance: 50, voiceVolume: .6),
+        const GuidanceSettings(
+          warningDistance: 50,
+          voiceVolume: .6,
+          locationProfile: LocationProfile.autonomy,
+        ),
       );
       expect((await repository.loadSettings()).warningDistance, 50);
+      expect(
+        (await repository.loadSettings()).locationProfile,
+        LocationProfile.autonomy,
+      );
       final run = RunSession(
         id: 'real-db',
         routeId: 'synthetic',
         startedAt: DateTime.utc(2026),
         simulated: false,
+        locationProfile: LocationProfile.balanced,
+        traversalControl: TraversalControl.returning,
       );
       await repository.createRun(run);
       run.progress = 30;
@@ -43,7 +75,11 @@ void main() {
       );
       await repository.appendFix(run, first, 0);
       final second = LocationFix(
-        point: const RoutePoint(0, .0001),
+        point: const RoutePoint(
+          0,
+          .0001,
+          traversal: TraversalDirection.returning,
+        ),
         timestamp: DateTime.utc(2026, 1, 1, 0, 0, 10),
         accuracy: 3,
       );
@@ -54,6 +90,68 @@ void main() {
       expect(recovered.segments.last.single.timestamp, second.timestamp);
       expect(recovered.progress, 30);
       expect(recovered.announcedCueIds, contains('cue'));
+      expect(recovered.locationProfile, LocationProfile.balanced);
+      expect(recovered.traversalControl, TraversalControl.returning);
+      expect(
+        recovered.segments.last.single.point.traversal,
+        TraversalDirection.returning,
+      );
+      expect(recovered.segments.last.single.speed, isNull);
+    },
+  );
+  test(
+    'saves a run and generated route atomically and replaces the route',
+    () async {
+      final run = RunSession(
+        id: 'free-atomic',
+        routeId: null,
+        startedAt: DateTime.utc(2026),
+        simulated: false,
+        mode: RunMode.free,
+        name: 'Balade',
+        generatedRouteId: 'generated',
+      );
+      await repository.createRun(run);
+      final route = syntheticRoute();
+      final generated = Route(
+        id: 'generated',
+        name: 'Balade',
+        segments: route.segments,
+      );
+      await repository.saveRunWithRoute(run, route: generated);
+      await repository.saveRunWithRoute(run, route: generated);
+      expect(
+        (await repository.listRoutes()).where((r) => r.id == 'generated'),
+        hasLength(1),
+      );
+
+      await repository.database.execute(
+        "CREATE TRIGGER reject_route BEFORE INSERT ON routes WHEN NEW.id = 'reject' BEGIN SELECT RAISE(ABORT, 'route rejected'); END",
+      );
+      final rejected = Route(
+        id: 'reject',
+        name: 'Échec',
+        segments: route.segments,
+      );
+      run.name = 'Ne doit pas être sauvegardé';
+      await expectLater(
+        repository.saveRunWithRoute(run, route: rejected),
+        throwsA(isA<DatabaseException>()),
+      );
+      expect((await repository.loadRun(run.id)).name, 'Balade');
+      await expectLater(
+        repository.saveRunWithRoute(
+          RunSession(
+            id: 'missing',
+            routeId: null,
+            startedAt: DateTime.utc(2026),
+            simulated: false,
+            mode: RunMode.free,
+          ),
+          route: rejected,
+        ),
+        throwsA(isA<StateError>()),
+      );
     },
   );
   test(

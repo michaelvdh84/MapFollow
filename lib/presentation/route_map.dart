@@ -10,11 +10,17 @@ class RouteMap extends StatefulWidget {
     required this.fix,
     required this.recorded,
     required this.active,
+    this.plannedRoute = false,
   });
-  final domain.Route route;
+
+  /// Absent au départ d'un Run libre : la carte attend alors sa première position.
+  final domain.Route? route;
   final domain.LocationFix? fix;
   final List<List<domain.LocationFix>> recorded;
   final bool active;
+
+  /// En guidage, le tracé source reste la référence verte, indépendamment de son historique.
+  final bool plannedRoute;
   @override
   State<RouteMap> createState() => _RouteMapState();
 }
@@ -22,16 +28,16 @@ class RouteMap extends StatefulWidget {
 class _RouteMapState extends State<RouteMap> {
   final MapController _map = MapController();
   bool _ready = false, _follow = true, _tileError = false;
+  bool _showOutbound = true, _showReturn = true;
   int _tileRevision = 0;
   late final List<LatLng> _routePoints;
   static LatLng _latLng(domain.RoutePoint p) => LatLng(p.latitude, p.longitude);
   @override
   void initState() {
     super.initState();
-    _routePoints = widget.route.segments
-        .expand((s) => s.points)
-        .map(_latLng)
-        .toList();
+    _routePoints =
+        widget.route?.segments.expand((s) => s.points).map(_latLng).toList() ??
+        [];
   }
 
   @override
@@ -44,7 +50,12 @@ class _RouteMapState extends State<RouteMap> {
         widget.fix != oldWidget.fix) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _ready) {
-          _map.move(_latLng(widget.fix!.point), _map.camera.zoom);
+          _map.move(
+            _latLng(widget.fix!.point),
+            oldWidget.fix == null && widget.route == null
+                ? 16
+                : _map.camera.zoom,
+          );
         }
       });
     }
@@ -56,18 +67,109 @@ class _RouteMapState extends State<RouteMap> {
     super.dispose();
   }
 
+  List<LatLng> get _visiblePoints => _routePoints.isNotEmpty
+      ? _routePoints
+      : widget.recorded
+            .expand((segment) => segment)
+            .map((fix) => _latLng(fix.point))
+            .toList();
+
+  List<LatLng> get _initialPoints => _visiblePoints;
+
+  bool get _classifiedRoute =>
+      widget.route?.segments.any(
+        (s) => s.points.any((p) => p.traversal != null),
+      ) ??
+      false;
+  bool get _hasTraversal =>
+      (_classifiedRoute && !widget.plannedRoute) ||
+      widget.recorded.any((s) => s.any((p) => p.point.traversal != null));
+
+  /// Chaque arête prend le sens de son arrivée ; la transition reste donc visible.
+  /// Les segments source ne sont jamais joints, même lorsque leur sens est identique.
+  List<Polyline> _classifiedLines(
+    Iterable<List<domain.RoutePoint>> segments,
+    domain.TraversalDirection? direction,
+  ) {
+    final lines = <Polyline>[];
+    for (final points in segments) {
+      var chain = <LatLng>[];
+      void emit() {
+        if (chain.length > 1) {
+          lines.add(
+            Polyline(
+              points: chain,
+              strokeWidth: direction == domain.TraversalDirection.outbound
+                  ? 6
+                  : direction == domain.TraversalDirection.returning
+                  ? 3
+                  : 4,
+              color: direction == domain.TraversalDirection.outbound
+                  ? Colors.blue
+                  : direction == domain.TraversalDirection.returning
+                  ? Colors.orange
+                  : Colors.deepOrange,
+              pattern: direction == domain.TraversalDirection.returning
+                  ? StrokePattern.dashed(segments: const [8, 6])
+                  : const StrokePattern.solid(),
+            ),
+          );
+        }
+        chain = [];
+      }
+
+      for (var i = 1; i < points.length; i++) {
+        if (points[i].traversal == direction) {
+          if (chain.isEmpty) chain.add(_latLng(points[i - 1]));
+          chain.add(_latLng(points[i]));
+        } else {
+          emit();
+        }
+      }
+      emit();
+    }
+    return lines;
+  }
+
+  List<Polyline> get _polylines {
+    final classified = [
+      if (_classifiedRoute && !widget.plannedRoute)
+        ...widget.route!.segments.map((s) => s.points),
+      ...widget.recorded.map((s) => s.map((p) => p.point).toList()),
+    ];
+    return [
+      if (!_classifiedRoute || widget.plannedRoute)
+        for (final segment in widget.route?.segments ?? <domain.RouteSegment>[])
+          Polyline(
+            points: segment.points.map(_latLng).toList(),
+            strokeWidth: 5,
+            color: const Color(0xff315d47),
+          ),
+      ..._classifiedLines(classified, null),
+      if (_showOutbound)
+        ..._classifiedLines(classified, domain.TraversalDirection.outbound),
+      // Le retour passe au-dessus de tous les allers, y compris un troisième passage.
+      if (_showReturn)
+        ..._classifiedLines(classified, domain.TraversalDirection.returning),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) => Stack(
     children: [
       FlutterMap(
         mapController: _map,
         options: MapOptions(
-          initialCenter: _routePoints.first,
-          initialZoom: 15,
-          initialCameraFit: _routePoints.length < 2
+          initialCenter: widget.fix != null
+              ? _latLng(widget.fix!.point)
+              : _visiblePoints.isNotEmpty
+              ? _visiblePoints.first
+              : const LatLng(0, 0),
+          initialZoom: _visiblePoints.isEmpty && widget.fix == null ? 3 : 15,
+          initialCameraFit: _initialPoints.length < 2
               ? null
               : CameraFit.bounds(
-                  bounds: LatLngBounds.fromPoints(_routePoints),
+                  bounds: LatLngBounds.fromPoints(_initialPoints),
                   padding: const EdgeInsets.all(35),
                   maxZoom: 17,
                 ),
@@ -96,36 +198,24 @@ class _RouteMapState extends State<RouteMap> {
               });
             },
           ),
-          PolylineLayer(
-            polylines: [
-              for (final segment in widget.route.segments)
-                Polyline(
-                  points: segment.points.map(_latLng).toList(),
-                  strokeWidth: 5,
-                  color: const Color(0xff315d47),
-                ),
-              for (final segment in widget.recorded.where((s) => s.length > 1))
-                Polyline(
-                  points: segment.map((p) => _latLng(p.point)).toList(),
-                  strokeWidth: 4,
-                  color: Colors.deepOrange,
-                ),
-            ],
-          ),
+          PolylineLayer(polylines: _polylines),
           MarkerLayer(
             markers: [
-              Marker(
-                point: _routePoints.first,
-                width: 32,
-                height: 32,
-                child: const Icon(Icons.flag, color: Colors.green, size: 30),
-              ),
-              Marker(
-                point: _routePoints.last,
-                width: 32,
-                height: 32,
-                child: const Icon(Icons.flag, color: Colors.red, size: 30),
-              ),
+              if (_visiblePoints.isNotEmpty)
+                Marker(
+                  point: _visiblePoints.first,
+                  width: 32,
+                  height: 32,
+                  child: const Icon(Icons.flag, color: Colors.green, size: 30),
+                ),
+              if (_visiblePoints.isNotEmpty &&
+                  (!widget.active || widget.route != null))
+                Marker(
+                  point: _visiblePoints.last,
+                  width: 32,
+                  height: 32,
+                  child: const Icon(Icons.flag, color: Colors.red, size: 30),
+                ),
               if (widget.fix != null)
                 Marker(
                   point: _latLng(widget.fix!.point),
@@ -156,6 +246,28 @@ class _RouteMapState extends State<RouteMap> {
           ),
         ),
       ),
+      if (_hasTraversal)
+        Positioned(
+          bottom: 26,
+          left: 8,
+          child: Wrap(
+            spacing: 8,
+            children: [
+              FilterChip(
+                avatar: const Icon(Icons.horizontal_rule, color: Colors.blue),
+                label: const Text('Aller'),
+                selected: _showOutbound,
+                onSelected: (value) => setState(() => _showOutbound = value),
+              ),
+              FilterChip(
+                avatar: const Icon(Icons.more_horiz, color: Colors.orange),
+                label: const Text('Retour'),
+                selected: _showReturn,
+                onSelected: (value) => setState(() => _showReturn = value),
+              ),
+            ],
+          ),
+        ),
       Positioned(
         top: 8,
         right: 8,
@@ -166,9 +278,11 @@ class _RouteMapState extends State<RouteMap> {
             setState(() => _follow = true);
             if (_ready) {
               _map.move(
-                widget.fix == null
-                    ? _routePoints.first
-                    : _latLng(widget.fix!.point),
+                widget.fix != null
+                    ? _latLng(widget.fix!.point)
+                    : _visiblePoints.isNotEmpty
+                    ? _visiblePoints.first
+                    : const LatLng(0, 0),
                 16,
               );
             }

@@ -15,4 +15,5 @@ ios/Flutter/flutter_export_environment.sh
 *.iml
 .idea/
 local-data/
+logs/
 *.log

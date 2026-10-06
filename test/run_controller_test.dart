@@ -19,7 +19,7 @@ void main() {
       repository: repository,
       voice: voice,
       requestNotifications: () async {},
-      locationFactory: (_, _, _) {
+      locationFactory: (_, _, _, _) {
         final source = FakeLocationSource();
         sources.add(source);
         return source;
@@ -102,7 +102,7 @@ void main() {
     final blocked = RunController(
       repository: repository,
       voice: voice,
-      locationFactory: (_, _, _) => FakeLocationSource()
+      locationFactory: (_, _, _, _) => FakeLocationSource()
         ..preparationError = const LocationAccessException('Refus synthétique'),
     );
     await blocked.initialize();

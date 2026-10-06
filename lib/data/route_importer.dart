@@ -128,12 +128,27 @@ class RouteImporter {
     return result;
   }
 
-  RoutePoint? _gpxPoint(XmlElement e) => _point(
-    e.getAttribute('lat'),
-    e.getAttribute('lon'),
-    _text(e, 'ele'),
-    _text(e, 'time'),
-  );
+  RoutePoint? _gpxPoint(XmlElement e) {
+    final point = _point(
+      e.getAttribute('lat'),
+      e.getAttribute('lon'),
+      _text(e, 'ele'),
+      _text(e, 'time'),
+    );
+    final extension = _child(e, 'extensions')?.childElements
+        .where(
+          (child) =>
+              child.name.local == 'traversalDirection' &&
+              child.name.namespaceUri ==
+                  'https://github.com/michaelvdh84/MapFollow/xmlns/1',
+        )
+        .firstOrNull;
+    final traversal = TraversalDirection.values
+        .where((value) => value.name == extension?.innerText.trim())
+        .firstOrNull;
+    return point?.withTraversal(traversal);
+  }
+
   CueDirection? _gpxTurn(XmlElement e) {
     final turns = e.descendants
         .whereType<XmlElement>()

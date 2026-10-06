@@ -1,10 +1,10 @@
 # MapFollow
 
-MapFollow est un prototype Flutter de guidage et d’enregistrement de parcours. L’application Android affiche une carte OpenStreetMap, importe un itinéraire, annonce des indications, enregistre une course localement et exporte une trace GPX. Le support iOS est une piste future, non prise en charge ni testée aujourd’hui.
+MapFollow est un prototype Flutter de guidage et d’enregistrement de parcours. L’application Android affiche une carte OpenStreetMap, importe un itinéraire, annonce les indications en mode guidé et permet aussi de démarrer une course libre sans itinéraire ni voix. Chaque Run peut épingler un profil GPS; les traces sont classées en couches Aller/Retour, avec vitesse et allure en direct/résumé et un panneau de diagnostics GNSS éphémères. Les courses sont enregistrées localement; une course libre terminée de longueur suffisante devient aussi un parcours enregistré. L’utilisateur peut exporter les traces en GPX. Le support iOS est une piste future, non prise en charge ni testée aujourd’hui.
 
 ## État du projet
 
-Le prototype contient les fonctions décrites dans ce guide. Le dernier APK debug a été construit, l’analyse ne signale aucun problème, les 34 tests passent et le formatage est propre. Aucun appareil Android physique n’était connecté lors du dernier contrôle : les essais terrain, Samsung et Bluetooth restent à faire. Voir [le journal de vérification](docs/verification.md) et [PLAN.md](PLAN.md).
+Le code courant porte la version `0.3.0+3`; ses 99 tests passent, l’analyse Dart ne signale aucun problème, 44 fichiers ont été formatés sans modification et l’APK debug a été construit et vérifié. Aucun essai manuel ni partage Android réel n’a été effectué. Les résultats de chaque build sont dans [le journal de vérification](docs/verification.md); consultez aussi [PLAN.md](PLAN.md).
 
 ## Démarrer sur Windows
 
@@ -50,11 +50,11 @@ Remplacez `DEVICE_ID` par l’identifiant affiché par la première commande. Po
 .\.tools\android-sdk\platform-tools\adb.exe install -r build\app\outputs\flutter-apk\app-debug.apk
 ```
 
-L’APK debug final du 4 octobre 2026 se trouve à `build/app/outputs/flutter-apk/app-debug.apk`. Il porte le nom de paquet `be.mapfollow.mapfollow`, version `0.1.0` (code 1), cible Android 26 minimum et SDK compile/target 36. Il ne s’agit pas d’une version de publication.
+L’APK debug courant est `build/app/outputs/flutter-apk/app-debug.apk` : paquet `be.mapfollow.mapfollow`, version `0.3.0` (code 3), minimum Android 26 et SDK compile/target 36; taille 195 516 366 octets. Son SHA-256 et l’APK précédent figurent dans [le journal de vérification](docs/verification.md). Ce build debug n’est pas une version de publication.
 
 ## Dans l’application
 
-Les onglets sont **Parcours**, **Course**, **Historique** et **Réglages**. Un parcours de démonstration `assets/demo.gpx` est inclus. La simulation se lance depuis l’onglet **Course** et fait avancer la position sur le même flux que les mises à jour GPS, à 3 m/s. Le bouton de test des réglages vérifie la voix.
+Les onglets sont **Parcours**, **Course**, **Historique** et **Réglages**. Un parcours de démonstration `assets/demo.gpx` est inclus. La simulation guidée se lance depuis **Course** et avance à 3 m/s pour essayer les annonces. Les boutons **Lancer un Run libre** et **Simuler un Run libre** sont disponibles depuis **Parcours** et **Course**; le second fait deux passages aller-retour synthétiques sans démarrer le service GPS Android. Choisissez **Précision**, **Équilibré** ou **Autonomie** dans Réglages avant un Run; ces réglages sont des demandes au système, pas des garanties de cadence ou de batterie. Pendant une course, choisissez Auto/Aller/Retour pour classer les prochains points et filtrez les calques de carte. **Diagnostics GNSS** expose les comptes satellites temporaires du récepteur Android déjà actif pendant un Run GPS réel; ils ne garantissent pas la précision GPS.
 
 Lisez [docs/android.md](docs/android.md) avant les essais avec écran verrouillé ou les annonces vocales. Consultez [docs/routes-and-storage.md](docs/routes-and-storage.md) pour l’import, l’enregistrement et l’export, et [docs/privacy-and-testing.md](docs/privacy-and-testing.md) pour les données et les précautions terrain.
 
@@ -66,6 +66,7 @@ Les données d’itinéraire sont sensibles. Pour les exemples, journaux, captur
 
 ## Guides
 
+- [docs/developer-guide.md](docs/developer-guide.md) : architecture pour débuter, première modification, commandes et débogage.
 - [docs/new-pc-setup.md](docs/new-pc-setup.md) : installer tous les prérequis sur un nouveau PC et commencer à modifier le code.
 - [docs/startup-guide.md](docs/startup-guide.md) : premier lancement, simulation sur PC et Samsung, résultats attendus et dépannage.
 - [PLAN.md](PLAN.md) : fonctions réalisées, limites, vérification.

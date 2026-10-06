@@ -10,14 +10,18 @@ abstract interface class RunRepository {
   Future<RunSession> loadRun(String id);
   Future<void> createRun(RunSession session);
   Future<void> saveRun(RunSession session);
+
+  /// Enregistre ensemble la session et, si elle existe, sa route générée.
+  /// Une erreur annule les deux écritures pour éviter une course incohérente.
+  Future<void> saveRunWithRoute(RunSession session, {Route? route});
   Future<void> appendFix(RunSession session, LocationFix fix, int segment);
   Future<GuidanceSettings> loadSettings();
   Future<void> saveSettings(GuidanceSettings settings);
   Future<void> close();
 }
 
-/// Metadata and each accepted fix are committed together: a crash must not
-/// advance guidance without retaining the corresponding recorded position.
+/// Métadonnées et position acceptée sont écrites ensemble : après un arrêt du
+/// processus, la progression récupérée doit correspondre aux points sauvegardés.
 class SqliteRunRepository implements RunRepository {
   SqliteRunRepository(this.database);
   final Database database;
@@ -121,6 +125,26 @@ class SqliteRunRepository implements RunRepository {
       where: 'id = ?',
       whereArgs: [session.id],
     );
+  }
+
+  @override
+  Future<void> saveRunWithRoute(RunSession session, {Route? route}) async {
+    // Le même identifiant de parcours permet de réessayer sans créer de doublon.
+    await database.transaction((txn) async {
+      final updated = await txn.update(
+        'runs',
+        _row(session),
+        where: 'id = ?',
+        whereArgs: [session.id],
+      );
+      if (updated != 1) throw StateError('Course introuvable.');
+      if (route != null) {
+        await txn.insert('routes', {
+          'id': route.id,
+          'data': jsonEncode(route.toJson()),
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
   }
 
   @override
