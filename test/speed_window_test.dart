@@ -48,7 +48,7 @@ void main() {
       expect(run.traversalControl, TraversalControl.automatic);
       expect(
         GuidanceSettings.fromJson({}).locationProfile,
-        LocationProfile.balanced,
+        LocationProfile.precise,
       );
       expect(RoutePoint.fromJson({'lat': 50, 'lon': 4}).traversal, isNull);
       final settings = const GuidanceSettings(

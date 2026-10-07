@@ -78,6 +78,17 @@ class PreparedRoute {
     }
     length = total;
     for (final cue in route.cues) {
+      if (cue.routeDistance != null &&
+          cue.routeDistance!.isFinite &&
+          cue.routeDistance! >= 0 &&
+          cue.routeDistance! <= length) {
+        final distance = cue.routeDistance!;
+        cues.removeWhere(
+          (c) => c.cue.estimated && (c.distance - distance).abs() < 25,
+        );
+        cues.add(PositionedCue(cue, distance));
+        continue;
+      }
       RouteEdge? best;
       var closest = double.infinity;
       var fraction = 0.0;
@@ -258,6 +269,7 @@ class NavigationEngine {
     }
     if (!_offRoute && offset <= settings.offRouteDistance) {
       for (final cue in prepared.cues) {
+        if (cue.cue.estimated) continue;
         if (announcedCueIds.contains(cue.cue.id)) continue;
         final ahead = cue.distance - progress;
         if (ahead < -5) {
@@ -285,6 +297,7 @@ class NavigationEngine {
   }) {
     PositionedCue? next;
     for (final cue in prepared.cues) {
+      if (cue.cue.estimated) continue;
       if (cue.distance >= progress - 5) {
         next = cue;
         break;

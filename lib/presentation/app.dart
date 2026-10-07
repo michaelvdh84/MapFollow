@@ -9,6 +9,9 @@ import 'free_run_screen.dart';
 import 'formatters.dart';
 import 'running_metrics.dart';
 import 'run_tracking_controls.dart';
+import 'battery_summary.dart';
+import 'history_tools.dart';
+import '../domain/run_diagnostics.dart';
 
 class MapFollowApp extends StatelessWidget {
   const MapFollowApp({super.key, required this.controller});
@@ -396,13 +399,45 @@ class _HomeScreenState extends State<HomeScreen> {
         if (run == null) ...[
           const SizedBox(height: 12),
           Text(
-            '${metres(c.prepared!.length)} · ${c.prepared!.cues.length} indication(s)',
+            '${metres(c.prepared!.length)} · ${c.prepared!.cues.where((cue) => !cue.cue.estimated).length} indication(s) de guidage',
           ),
           const SizedBox(height: 8),
           const _Notice(
             'Commencez près du départ et suivez le sens du fichier. À 20 m, la précision GPS et le temps de parole peuvent rendre l’annonce tardive.',
           ),
           const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: c.busy || c.recoverable != null
+                ? null
+                : () async {
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Préparer avec OpenStreetMap ?'),
+                        content: const Text(
+                          'La zone de ce parcours sera transmise au service Overpass pour obtenir les chemins et leurs intersections. Le parcours et les indications préparées seront conservés sur ce téléphone. Le fond de carte reste en ligne.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Annuler'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('Préparer'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirmed == true) {
+                      await c.perform(c.prepareMapGuidance);
+                    }
+                  },
+            icon: const Icon(Icons.alt_route),
+            label: const Text('Préparer les indications avec OpenStreetMap'),
+          ),
+          if (route.mapPreparationMessage != null)
+            Text(route.mapPreparationMessage!),
           FilledButton.icon(
             onPressed: c.busy || c.recoverable != null
                 ? null
@@ -423,7 +458,11 @@ class _HomeScreenState extends State<HomeScreen> {
             'Indications avant départ',
             style: Theme.of(context).textTheme.titleMedium,
           ),
-          for (final cue in c.prepared!.cues)
+          if (!c.prepared!.cues.any((cue) => !cue.cue.estimated))
+            const Text(
+              'Suivez le tracé. Préparez les intersections pour obtenir des indications cartographiques.',
+            ),
+          for (final cue in c.prepared!.cues.where((cue) => !cue.cue.estimated))
             ListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
@@ -436,8 +475,27 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               title: Text(directionText(cue.cue.direction)),
               subtitle: Text(
-                'À ${metres(cue.distance)} · ${cue.cue.estimated ? 'estimée' : 'fournie par le fichier'}',
+                'À ${metres(cue.distance)} · ${cue.cue.origin == domain.CueOrigin.openStreetMap ? 'OpenStreetMap' : 'fichier'}',
               ),
+            ),
+          if (c.prepared!.cues.any((cue) => cue.cue.estimated))
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: const Text('Estimations géométriques'),
+              subtitle: const Text(
+                'Issues des angles du GPX ; sans annonce vocale.',
+              ),
+              children: [
+                for (final cue in c.prepared!.cues.where(
+                  (cue) => cue.cue.estimated,
+                ))
+                  ListTile(
+                    title: Text(directionText(cue.cue.direction)),
+                    subtitle: Text(
+                      'À ${metres(cue.distance)} · estimation géométrique',
+                    ),
+                  ),
+              ],
             ),
         ] else ...[
           Wrap(
@@ -528,6 +586,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         ? 'Terminée'
                         : 'Course récupérable',
                   ),
+                  BatterySummary(
+                    samples: run.batterySamples,
+                    interrupted: run.batteryInterrupted,
+                    detailed: run.diagnosticsMode == DiagnosticsMode.diagnostic,
+                  ),
                   const SizedBox(height: 8),
                   if (run.mode == domain.RunMode.free &&
                       run.status == domain.RunStatus.finished)
@@ -545,6 +608,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       icon: const Icon(Icons.ios_share),
                       label: const Text('Exporter le GPX'),
                     ),
+                  HistoryTools(controller: c, run: run),
                 ],
               ),
             ),
@@ -569,6 +633,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   late double _warning, _offset, _volume;
   late domain.LocationProfile _profile;
+  late DiagnosticsMode _diagnosticsMode;
   @override
   void initState() {
     super.initState();
@@ -577,6 +642,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _offset = s.offRouteDistance;
     _volume = s.voiceVolume;
     _profile = s.locationProfile;
+    _diagnosticsMode = s.diagnosticsMode;
   }
 
   @override
@@ -612,6 +678,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'Appliqué au prochain départ. La course actuelle conserve son profil GPS. Les intervalles sont des demandes au système et peuvent varier selon Android.',
         ),
         const SizedBox(height: 20),
+        DropdownButtonFormField<DiagnosticsMode>(
+          initialValue: _diagnosticsMode,
+          decoration: const InputDecoration(
+            labelText: 'Mesures de la prochaine course',
+          ),
+          items: const [
+            DropdownMenuItem(
+              value: DiagnosticsMode.normal,
+              child: Text('Normal · batterie début / fin'),
+            ),
+            DropdownMenuItem(
+              value: DiagnosticsMode.diagnostic,
+              child: Text('Diagnostic · GPS et batterie détaillés'),
+            ),
+          ],
+          onChanged: c.busy
+              ? null
+              : (value) => setState(() => _diagnosticsMode = value!),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Le mode Diagnostic conserve localement les positions reçues, les décisions de filtrage et un relevé batterie chaque minute. Aucun comptage GNSS n’est enregistré. Le mode reste épinglé à la course.',
+        ),
+        const SizedBox(height: 20),
         Text('Prévenir ${_warning.round()} m avant le virage'),
         Slider(
           value: _warning,
@@ -643,12 +733,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ? () => c.perform(
                   () => c.updateSettings(
                     c.running
-                        ? c.settings.copyWith(locationProfile: _profile)
+                        ? c.settings.copyWith(
+                            locationProfile: _profile,
+                            diagnosticsMode: _diagnosticsMode,
+                          )
                         : c.settings.copyWith(
                             warningDistance: _warning,
                             offRouteDistance: _offset,
                             voiceVolume: _volume,
                             locationProfile: _profile,
+                            diagnosticsMode: _diagnosticsMode,
                           ),
                   ),
                 )

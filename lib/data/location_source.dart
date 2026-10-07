@@ -21,7 +21,7 @@ class LocationAccessException implements Exception {
 }
 
 class DeviceLocationSource implements LocationSource {
-  DeviceLocationSource({this.profile = LocationProfile.balanced});
+  DeviceLocationSource({this.profile = LocationProfile.precise});
   final LocationProfile profile;
   StreamSubscription<Position>? _subscription;
   StreamController<LocationFix>? _controller;
@@ -29,7 +29,7 @@ class DeviceLocationSource implements LocationSource {
   /// Cadences demandées à Android ; le système reste maître des livraisons.
   LocationSettings get profileSettings {
     final distance = switch (profile) {
-      LocationProfile.precise => 2,
+      LocationProfile.precise => 0,
       LocationProfile.balanced => 3,
       LocationProfile.autonomy => 5,
     };

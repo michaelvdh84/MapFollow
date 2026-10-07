@@ -132,6 +132,13 @@ void main() {
       await tester.ensureVisible(
         find.text('Enregistrer le profil de la prochaine course'),
       );
+      await Scrollable.ensureVisible(
+        tester.element(
+          find.text('Enregistrer le profil de la prochaine course'),
+        ),
+        alignment: .5,
+      );
+      await tester.pump();
       await tester.tap(
         find.text('Enregistrer le profil de la prochaine course'),
       );
@@ -245,6 +252,11 @@ void main() {
     await tester.tap(find.text('Autonomie · 5 s / 5 m').last);
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Enregistrer les réglages'));
+    await Scrollable.ensureVisible(
+      tester.element(find.text('Enregistrer les réglages')),
+      alignment: .5,
+    );
+    await tester.pump();
     await tester.tap(find.text('Enregistrer les réglages'));
     await tester.pump();
     expect(repo.settings.locationProfile, domain.LocationProfile.autonomy);
@@ -282,7 +294,7 @@ void main() {
         ),
       );
       expect(
-        find.text('Profil GPS de cette course : Précision · 1 s / 2 m'),
+        find.text('Profil GPS de cette course : Précision · 1 s / 0 m'),
         findsOneWidget,
       );
       await tester.tap(find.text('Retour'));

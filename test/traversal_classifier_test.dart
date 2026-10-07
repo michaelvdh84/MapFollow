@@ -36,6 +36,27 @@ TraversalClassifier straightOutbound() {
 }
 
 void main() {
+  test('dense fixes aggregate direction despite oscillating phone heading', () {
+    final classifier = TraversalClassifier();
+    for (var i = 0; i <= 120; i++) {
+      classifier.add(
+        LocationFix(
+          point: fix(i.toDouble(), .5 * math.sin(i * 1.7)).point,
+          timestamp: DateTime.utc(2026).add(Duration(seconds: i)),
+          accuracy: 3,
+          heading: i.isEven ? 0 : 180,
+        ),
+        newSegment: i == 0,
+        control: TraversalControl.automatic,
+      );
+    }
+    final labels = [
+      for (var i = 119; i >= 20; i--)
+        add(classifier, i.toDouble(), y: .5 * math.sin(i * 1.7)),
+    ];
+    expect(labels.skip(25), everyElement(returning));
+  });
+
   test('first pass is outbound, reverse is return, third pass is outbound', () {
     final classifier = straightOutbound();
     final reverse = <TraversalDirection>[];

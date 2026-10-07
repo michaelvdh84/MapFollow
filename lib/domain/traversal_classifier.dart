@@ -36,6 +36,7 @@ class TraversalClassifier {
   final Map<(int, int), List<_Edge>> _grid = {};
   RoutePoint? _origin;
   RoutePoint? _previous;
+  final List<RoutePoint> _headingWindow = [];
   var _segment = 0;
   var _distance = 0.0;
   var _nextEdge = 0;
@@ -60,6 +61,7 @@ class TraversalClassifier {
     if (newSegment) {
       _segment++;
       _previous = null;
+      _headingWindow.clear();
       _resetConfirmation();
     }
     _lastCandidateCount = 0;
@@ -67,14 +69,37 @@ class TraversalClassifier {
     final step = previous == null ? 0.0 : distanceBetween(previous, point);
     final startDistance = _distance;
     _distance += step;
+    // Jusqu'à cinq positions et environ dix mètres : le cap vient du
+    // déplacement enregistré, jamais de l'orientation du téléphone. Une grande
+    // arête suffit ; les positions fréquentes sont agrégées pour limiter le bruit.
+    var headingStart = previous;
+    var headingDistance = step;
+    for (
+      var i = _headingWindow.length - 2;
+      i >= 0 && headingDistance < 10;
+      i--
+    ) {
+      headingDistance += distanceBetween(
+        _headingWindow[i],
+        _headingWindow[i + 1],
+      );
+      headingStart = _headingWindow[i];
+    }
+    final headingSpan = headingStart == null
+        ? 0.0
+        : distanceBetween(headingStart, point);
 
     if (control != TraversalControl.automatic) {
       _direction = control == TraversalControl.outbound
           ? TraversalDirection.outbound
           : TraversalDirection.returning;
       _resetConfirmation();
-    } else if (previous != null && step >= 2) {
-      final match = _match(previous, point);
+    } else if (previous != null && step >= .5 && headingSpan >= 2) {
+      final match = _match(
+        previous,
+        point,
+        bearingBetween(headingStart!, point),
+      );
       // Une portion encore inconnue redevient Aller après confirmation. Après
       // un choix manuel, Auto applique les mêmes trois positions et quinze
       // mètres, sans réinterpréter les points déjà enregistrés.
@@ -89,12 +114,24 @@ class TraversalClassifier {
       _resetConfirmation();
     }
 
-    if (previous != null && step >= 2) {
+    if (previous != null && step >= .5) {
       _index(
-        _Edge(previous, point, startDistance, _distance, _segment, _nextEdge++),
+        _Edge(
+          previous,
+          point,
+          startDistance,
+          _distance,
+          _segment,
+          _nextEdge++,
+          heading: headingSpan >= 2
+              ? bearingBetween(headingStart!, point)
+              : null,
+        ),
       );
     }
     _previous = point;
+    _headingWindow.add(point);
+    if (_headingWindow.length > 5) _headingWindow.removeAt(0);
     return _direction;
   }
 
@@ -140,7 +177,7 @@ class TraversalClassifier {
     _pendingCount = 0;
   }
 
-  _Match? _match(RoutePoint previous, RoutePoint point) {
+  _Match? _match(RoutePoint previous, RoutePoint point, double heading) {
     final (x, y) = _coordinates(point);
     final candidates = <_Edge>{};
     for (
@@ -157,7 +194,6 @@ class TraversalClassifier {
       }
     }
     _lastCandidateCount = candidates.length;
-    final heading = bearingBetween(previous, point);
     _Match? earliest;
     for (final edge in candidates) {
       if (edge.endDistance > _distance - _recentDistance) continue;
@@ -232,8 +268,9 @@ class _Edge {
     this.startDistance,
     this.endDistance,
     this.segment,
-    this.order,
-  ) : heading = bearingBetween(a, b);
+    this.order, {
+    double? heading,
+  }) : heading = heading ?? bearingBetween(a, b);
   final RoutePoint a;
   final RoutePoint b;
   final double startDistance;

@@ -1,6 +1,26 @@
 # Journal de vérification
 
-## Contrôles de la version actuelle — `0.3.0+3`
+## Contrôles de la version actuelle — `0.4.0+4` (7 octobre 2026)
+
+| Contrôle | Commande / méthode | Résultat |
+|---|---|---|
+| Analyse Dart | `scripts/flutter.ps1 analyze` | Aucun problème ; 10,2 s |
+| Suite complète | `scripts/flutter.ps1 test` | 143 tests réussis ; 20 s |
+| Formatage | `dart format --output=none --set-exit-if-changed lib test` | 60 fichiers ; 0 modifié |
+| Build Android debug | `scripts/flutter.ps1 build apk --debug` | Build Gradle réussi ; 87,6 s |
+| APK / AAPT | Paquet, version, SDK, taille, SHA-256 | `be.mapfollow.mapfollow`, `0.4.0` code 4 ; minSdk 26, compile/target 36 ; 168 874 586 octets ; `29435805FC9A5E790E14FD8BF39E4F602DBE873B9DF1AB124912BA7ABD69B4D3` |
+| Installation S23 Ultra | `adb install -r`, démarrage et Historique | Succès sans désinstallation/effacement ; courses précédentes visibles ; profil Précision sélectionné |
+| Essai Android court | Run libre Diagnostic, service, arrêt du processus, clôture, bilan et dialogues | Service/notification confirmés ; récupération explicite ; batterie 100 %→100 %, recharge/interruption/courbe ; export annulé, confirmation de suppression et annulation testées ; réglage final Normal |
+| Rejeu de l'ancien GPX | Traitement en mémoire, résultats agrégés uniquement | 7 500,0 → 7 524,5 m ; 7 rejets ; aucune amélioration réelle démontrée |
+| Nouvelle comparaison Garmin | Nouvelle sortie, Précision, écran verrouillé avec YouTube Music | À réaliser ; cible <3 % non validée |
+
+Les nouveaux tests couvrent bruit, arrêt, sauts, virage, demi-tour, pause/perte/reprise, chemins parallèles, connexions OSM et ponts, ambiguïtés, cache/réseau, batterie normale/diagnostic, récupération, exports, migration v1, confirmation et rollback de suppression. Les avertissements de dépendances et de tuiles OSM de test ne constituent pas des échecs.
+
+Le build émet des avertissements non bloquants d'accès natif JDK, d'usage futur du Kotlin Gradle Plugin par `flutter_tts` et de versions XML du SDK. La lecture complète de la base privée du téléphone pour comparer ses points a été refusée par le contrôle automatique ; aucune base ni coordonnée n'a été transférée. La conservation sur appareil est vérifiée via l'historique, et la migration exacte des anciennes traces est couverte par SQLite synthétique.
+
+Le contrôle a aussi refusé la lecture des journaux privés et demandé une autorisation explicite pour nettoyer le Run d'essai. Cette autorisation a été obtenue ; l'essai ne figure plus dans l'historique. Voir [les étapes et limites du contrôle physique](field-validation.md) : écran OFF observé ponctuellement, suivi prolongé verrouillé avec YouTube Music et précision Garmin encore à valider. Le téléphone en charge ne permet pas de mesurer une consommation représentative.
+
+## Contrôle précédent — `0.3.0+3`
 
 Analyse, tests, formatage, compilation Gradle et métadonnées AAPT de `0.3.0+3` sont confirmés ci-dessous. Aucun de ces contrôles ne remplace un essai manuel.
 

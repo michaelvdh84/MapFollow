@@ -4,6 +4,9 @@ import '../domain/models.dart' as domain;
 import 'route_map.dart';
 import 'running_metrics.dart';
 import 'run_tracking_controls.dart';
+import 'battery_summary.dart';
+import 'history_tools.dart';
+import '../domain/run_diagnostics.dart';
 
 /// Présentation du Run libre : seul le contrôleur connaît GPS et stockage.
 class FreeRunScreen extends StatelessWidget {
@@ -89,6 +92,12 @@ class FreeRunScreen extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           if (finished) ...[
+            BatterySummary(
+              samples: run.batterySamples,
+              interrupted: run.batteryInterrupted,
+              detailed: run.diagnosticsMode == DiagnosticsMode.diagnostic,
+            ),
+            HistoryTools(controller: c, run: run),
             Text(
               route == null
                   ? 'Course conservée dans l’historique. Il faut au moins deux positions distinctes dans un même segment pour créer un parcours réutilisable.'

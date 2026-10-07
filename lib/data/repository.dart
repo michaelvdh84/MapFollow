@@ -15,6 +15,9 @@ abstract interface class RunRepository {
   /// Une erreur annule les deux écritures pour éviter une course incohérente.
   Future<void> saveRunWithRoute(RunSession session, {Route? route});
   Future<void> appendFix(RunSession session, LocationFix fix, int segment);
+  Future<void> appendDiagnostic(String runId, Map<String, dynamic> event);
+  Future<List<Map<String, dynamic>>> loadDiagnostics(String runId);
+  Future<void> deleteRun(String id, {bool deleteGeneratedRoute = false});
   Future<GuidanceSettings> loadSettings();
   Future<void> saveSettings(GuidanceSettings settings);
   Future<void> close();
@@ -29,7 +32,7 @@ class SqliteRunRepository implements RunRepository {
   static Future<SqliteRunRepository> open({String? databasePath}) async {
     final db = await openDatabase(
       databasePath ?? path.join(await getDatabasesPath(), 'mapfollow.db'),
-      version: 1,
+      version: 2,
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
       },
@@ -50,9 +53,83 @@ class SqliteRunRepository implements RunRepository {
         await db.execute(
           'CREATE TABLE settings (id INTEGER PRIMARY KEY, data TEXT NOT NULL)',
         );
+        await _createDiagnostics(db);
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) await _createDiagnostics(db);
       },
     );
     return SqliteRunRepository(db);
+  }
+
+  static Future<void> _createDiagnostics(DatabaseExecutor db) async {
+    await db.execute(
+      'CREATE TABLE run_diagnostics (sequence INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL REFERENCES runs(id), data TEXT NOT NULL)',
+    );
+    await db.execute(
+      'CREATE INDEX diagnostics_run ON run_diagnostics(run_id, sequence)',
+    );
+  }
+
+  @override
+  Future<void> appendDiagnostic(
+    String runId,
+    Map<String, dynamic> event,
+  ) async {
+    await database.insert('run_diagnostics', {
+      'run_id': runId,
+      'data': jsonEncode(event),
+    });
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> loadDiagnostics(String runId) async =>
+      (await database.query(
+            'run_diagnostics',
+            where: 'run_id = ?',
+            whereArgs: [runId],
+            orderBy: 'sequence',
+          ))
+          .map(
+            (r) => Map<String, dynamic>.from(
+              jsonDecode(r['data'] as String) as Map,
+            ),
+          )
+          .toList();
+
+  @override
+  Future<void> deleteRun(String id, {bool deleteGeneratedRoute = false}) async {
+    await database.transaction((txn) async {
+      final rows = await txn.query('runs', where: 'id = ?', whereArgs: [id]);
+      if (rows.isEmpty) throw StateError('Course introuvable.');
+      final run = RunSession.fromJson(
+        jsonDecode(rows.single['data'] as String) as Map<String, dynamic>,
+      );
+      if (run.status != RunStatus.finished) {
+        throw StateError('Terminez la course avant de la supprimer.');
+      }
+      final routeId = run.generatedRouteId;
+      if (deleteGeneratedRoute && routeId != null) {
+        if (routeId != 'recorded-${run.id}') {
+          throw StateError(
+            'Ce parcours ne peut pas être supprimé avec cette course.',
+          );
+        }
+        final active = await txn.query('runs', where: "status != 'finished'");
+        if (active.any(
+          (row) =>
+              (jsonDecode(row['data'] as String) as Map)['routeId'] == routeId,
+        )) {
+          throw StateError(
+            'Ce parcours est utilisé par une course active ou récupérable.',
+          );
+        }
+        await txn.delete('routes', where: 'id = ?', whereArgs: [routeId]);
+      }
+      await txn.delete('run_diagnostics', where: 'run_id = ?', whereArgs: [id]);
+      await txn.delete('fixes', where: 'run_id = ?', whereArgs: [id]);
+      await txn.delete('runs', where: 'id = ?', whereArgs: [id]);
+    });
   }
 
   @override

@@ -155,7 +155,7 @@ Pour le guidage, `PreparedRoute` transforme `Route` en arêtes et indications po
 
 ## Règles de course à garder en tête
 
-Les Réglages proposent les profils **Précision** (`bestForNavigation`, 1 s, 2 m), **Équilibré** (`high`, 2 s, 3 m) et **Autonomie** (`high`, 5 s, 5 m). Équilibré est le défaut des réglages globaux; le choix est épinglé dans chaque session et réutilisé en récupération. Une ancienne session sans valeur revient à Précision. Les valeurs sont des demandes Android; l’OS et le téléphone déterminent les positions effectivement envoyées. Aucun profil ne promet une économie de batterie.
+Les Réglages proposent les profils **Précision** (`bestForNavigation`, 1 s, 0 m), **Équilibré** (`high`, 2 s, 3 m) et **Autonomie** (`high`, 5 s, 5 m). Précision est le défaut des nouveaux réglages globaux ; les préférences existantes sont préservées. Le choix est épinglé dans chaque session et réutilisé en récupération. Une ancienne session sans valeur revient à Précision. Les valeurs sont des demandes Android; l’OS et le téléphone déterminent les positions effectivement envoyées. Aucun profil ne promet une économie de batterie. Voir [le traitement GPS et les diagnostics](gps-guidance-and-diagnostics.md) pour le filtre, la préparation OSM, la batterie et la migration SQLite v2.
 
 `LocationFix.speed` est nullable : une mesure absente ne veut pas dire vitesse nulle. `SpeedWindow` moyenne les vitesses GPS valides sur 5 s. Elle repart vide après pause/reprise. En pause, vitesse = 0 et allure = `--`; lorsque la vitesse manque pendant un Run, vitesse et allure indiquent `--`. Le résumé estime la vitesse moyenne par distance/durée active, avec les pauses exclues.
 

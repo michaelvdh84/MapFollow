@@ -9,6 +9,7 @@ import android.content.IntentFilter
 import android.location.GnssStatus
 import android.location.LocationManager
 import android.os.Build
+import android.os.BatteryManager
 import android.os.Handler
 import android.os.Looper
 import android.media.AudioAttributes
@@ -74,6 +75,15 @@ class MainActivity : FlutterActivity() {
     }
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mapfollow/battery")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "getSnapshot") {
+                    result.notImplemented()
+                } else {
+                    try { result.success(batterySnapshot()) }
+                    catch (_: RuntimeException) { result.success(null) }
+                }
+            }
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, "mapfollow/gnssStatus")
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
@@ -133,6 +143,32 @@ class MainActivity : FlutterActivity() {
             pendingNotificationResult = null
         }
         if (gnssSink != null) refreshGnss()
+    }
+
+    private fun batterySnapshot(): Map<String, Any?> {
+        // Reading the sticky system broadcast does not register a listener.
+        val snapshot = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val manager = getSystemService(BATTERY_SERVICE) as? BatteryManager
+        val level = snapshot?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = snapshot?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+        val status = snapshot?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val temperature = snapshot?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Int.MIN_VALUE)
+        val voltage = snapshot?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, -1)
+        fun property(id: Int): Int? = try {
+            manager?.getIntProperty(id)?.takeUnless { it == Int.MIN_VALUE }
+        } catch (_: RuntimeException) { null }
+        return mapOf(
+            "levelPercent" to if (scale > 0 && level in 0..scale) (100.0 * level / scale).toInt() else null,
+            "charging" to when (status) {
+                BatteryManager.BATTERY_STATUS_CHARGING, BatteryManager.BATTERY_STATUS_FULL -> true
+                BatteryManager.BATTERY_STATUS_DISCHARGING, BatteryManager.BATTERY_STATUS_NOT_CHARGING -> false
+                else -> null
+            },
+            "temperatureC" to temperature?.takeUnless { it == Int.MIN_VALUE }?.div(10.0),
+            "voltageMv" to voltage?.takeIf { it > 0 },
+            "currentMicroAmps" to property(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW),
+            "chargeMicroAh" to property(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER)?.takeIf { it >= 0 }
+        )
     }
 
     private fun emitGnssState(state: String) {

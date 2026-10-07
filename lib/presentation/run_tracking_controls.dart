@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import '../application/run_controller.dart';
 import '../domain/models.dart';
+import '../domain/run_diagnostics.dart';
 import 'gnss_panel.dart';
 
 String locationProfileLabel(LocationProfile profile) => switch (profile) {
-  LocationProfile.precise => 'Précision · 1 s / 2 m',
+  LocationProfile.precise => 'Précision · 1 s / 0 m',
   LocationProfile.balanced => 'Équilibré · 2 s / 3 m',
   LocationProfile.autonomy => 'Autonomie · 5 s / 5 m',
 };
@@ -19,6 +20,9 @@ class RunTrackingControls extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Text(
+          'Mesures batterie : ${(run?.diagnosticsMode ?? c.settings.diagnosticsMode) == DiagnosticsMode.diagnostic ? 'Diagnostic' : 'Normal · début / fin'}',
+        ),
         Text(
           'Profil GPS ${run == null ? 'au prochain départ' : 'de cette course'} : ${locationProfileLabel(run?.locationProfile ?? c.settings.locationProfile)}',
         ),

@@ -1,7 +1,13 @@
 /// Platform-independent values. Coordinates use WGS84; lengths use metres.
 library;
 
+import 'run_diagnostics.dart';
+
 enum CueDirection { left, right, straight, uTurn }
+
+enum CueOrigin { file, openStreetMap, geometric }
+
+enum MapPreparationStatus { none, prepared, partial, empty }
 
 enum RunStatus { running, paused, interrupted, finished }
 
@@ -74,19 +80,25 @@ class NavigationCue {
     required this.point,
     required this.direction,
     this.label,
-    this.estimated = false,
-  });
+    bool estimated = false,
+    CueOrigin? origin,
+    this.routeDistance,
+  }) : origin = origin ?? (estimated ? CueOrigin.geometric : CueOrigin.file);
   final String id;
   final RoutePoint point;
   final CueDirection direction;
   final String? label;
-  final bool estimated;
+  final CueOrigin origin;
+  final double? routeDistance;
+  bool get estimated => origin == CueOrigin.geometric;
   Map<String, dynamic> toJson() => {
     'id': id,
     'point': point.toJson(),
     'direction': direction.name,
     'label': label,
     'estimated': estimated,
+    'origin': origin.name,
+    if (routeDistance != null) 'routeDistance': routeDistance,
   };
   factory NavigationCue.fromJson(Map<String, dynamic> json) => NavigationCue(
     id: json['id'] as String,
@@ -94,6 +106,8 @@ class NavigationCue {
     direction: CueDirection.values.byName(json['direction'] as String),
     label: json['label'] as String?,
     estimated: json['estimated'] as bool? ?? false,
+    origin: CueOrigin.values.where((v) => v.name == json['origin']).firstOrNull,
+    routeDistance: (json['routeDistance'] as num?)?.toDouble(),
   );
 }
 
@@ -104,6 +118,9 @@ class Route {
     required Iterable<RouteSegment> segments,
     Iterable<NavigationCue> cues = const [],
     this.sourceFormat = 'gpx',
+    this.mapPreparationStatus = MapPreparationStatus.none,
+    this.mapPreparationMessage,
+    this.mapPreparedAt,
   }) : segments = List.unmodifiable(segments),
        cues = List.unmodifiable(cues);
   final String id;
@@ -111,17 +128,48 @@ class Route {
   final List<RouteSegment> segments;
   final List<NavigationCue> cues;
   final String sourceFormat;
+  final MapPreparationStatus mapPreparationStatus;
+  final String? mapPreparationMessage;
+  final DateTime? mapPreparedAt;
+  Route copyWith({
+    String? name,
+    Iterable<NavigationCue>? cues,
+    MapPreparationStatus? mapPreparationStatus,
+    String? mapPreparationMessage,
+    DateTime? mapPreparedAt,
+  }) => Route(
+    id: id,
+    name: name ?? this.name,
+    segments: segments,
+    cues: cues ?? this.cues,
+    sourceFormat: sourceFormat,
+    mapPreparationStatus: mapPreparationStatus ?? this.mapPreparationStatus,
+    mapPreparationMessage: mapPreparationMessage ?? this.mapPreparationMessage,
+    mapPreparedAt: mapPreparedAt ?? this.mapPreparedAt,
+  );
   Map<String, dynamic> toJson() => {
     'id': id,
     'name': name,
     'format': sourceFormat,
     'segments': segments.map((s) => s.toJson()).toList(),
     'cues': cues.map((c) => c.toJson()).toList(),
+    'mapPreparationStatus': mapPreparationStatus.name,
+    'mapPreparationMessage': mapPreparationMessage,
+    'mapPreparedAt': mapPreparedAt?.toUtc().toIso8601String(),
   };
   factory Route.fromJson(Map<String, dynamic> json) => Route(
     id: json['id'] as String,
     name: json['name'] as String,
     sourceFormat: json['format'] as String,
+    mapPreparationStatus:
+        MapPreparationStatus.values
+            .where((v) => v.name == json['mapPreparationStatus'])
+            .firstOrNull ??
+        MapPreparationStatus.none,
+    mapPreparationMessage: json['mapPreparationMessage'] as String?,
+    mapPreparedAt: json['mapPreparedAt'] == null
+        ? null
+        : DateTime.parse(json['mapPreparedAt'] as String),
     segments: (json['segments'] as List).map(
       (s) => RouteSegment.fromJson(Map<String, dynamic>.from(s as Map)),
     ),
@@ -178,10 +226,14 @@ class RunSession {
     this.progress = 0,
     this.locationProfile = LocationProfile.precise,
     this.traversalControl = TraversalControl.automatic,
+    this.diagnosticsMode = DiagnosticsMode.normal,
+    List<BatterySample>? batterySamples,
+    this.batteryInterrupted = false,
     Set<String>? announcedCueIds,
     List<List<LocationFix>>? segments,
   }) : announcedCueIds = announcedCueIds ?? {},
-       segments = segments ?? [[]];
+       segments = segments ?? [[]],
+       batterySamples = batterySamples ?? [];
   final String id;
 
   /// Itinéraire à suivre : absent lorsque l'on enregistre un Run libre.
@@ -200,6 +252,9 @@ class RunSession {
   double progress;
   final LocationProfile locationProfile;
   TraversalControl traversalControl;
+  final DiagnosticsMode diagnosticsMode;
+  final List<BatterySample> batterySamples;
+  bool batteryInterrupted;
   final Set<String> announcedCueIds;
   final List<List<LocationFix>> segments;
   Map<String, dynamic> toJson() => {
@@ -217,6 +272,9 @@ class RunSession {
     'progress': progress,
     'locationProfile': locationProfile.name,
     'traversalControl': traversalControl.name,
+    'diagnosticsMode': diagnosticsMode.name,
+    'batterySamples': batterySamples.map((s) => s.toJson()).toList(),
+    'batteryInterrupted': batteryInterrupted,
     'announcedCueIds': announcedCueIds.toList(),
   };
   factory RunSession.fromJson(Map<String, dynamic> json) => RunSession(
@@ -247,6 +305,15 @@ class RunSession {
             .where((value) => value.name == json['traversalControl'])
             .firstOrNull ??
         TraversalControl.automatic,
+    diagnosticsMode:
+        DiagnosticsMode.values
+            .where((v) => v.name == json['diagnosticsMode'])
+            .firstOrNull ??
+        DiagnosticsMode.normal,
+    batterySamples: (json['batterySamples'] as List? ?? [])
+        .map((s) => BatterySample.fromJson(Map<String, dynamic>.from(s as Map)))
+        .toList(),
+    batteryInterrupted: json['batteryInterrupted'] as bool? ?? false,
     announcedCueIds: Set<String>.from(json['announcedCueIds'] as List),
   );
 }
@@ -256,28 +323,33 @@ class GuidanceSettings {
     this.warningDistance = 20,
     this.offRouteDistance = 30,
     this.voiceVolume = 1,
-    this.locationProfile = LocationProfile.balanced,
+    this.locationProfile = LocationProfile.precise,
+    this.diagnosticsMode = DiagnosticsMode.normal,
   });
   final double warningDistance;
   final double offRouteDistance;
   final double voiceVolume;
   final LocationProfile locationProfile;
+  final DiagnosticsMode diagnosticsMode;
   GuidanceSettings copyWith({
     double? warningDistance,
     double? offRouteDistance,
     double? voiceVolume,
     LocationProfile? locationProfile,
+    DiagnosticsMode? diagnosticsMode,
   }) => GuidanceSettings(
     warningDistance: warningDistance ?? this.warningDistance,
     offRouteDistance: offRouteDistance ?? this.offRouteDistance,
     voiceVolume: voiceVolume ?? this.voiceVolume,
     locationProfile: locationProfile ?? this.locationProfile,
+    diagnosticsMode: diagnosticsMode ?? this.diagnosticsMode,
   );
   Map<String, dynamic> toJson() => {
     'warningDistance': warningDistance,
     'offRouteDistance': offRouteDistance,
     'voiceVolume': voiceVolume,
     'locationProfile': locationProfile.name,
+    'diagnosticsMode': diagnosticsMode.name,
   };
   factory GuidanceSettings.fromJson(Map<String, dynamic> json) =>
       GuidanceSettings(
@@ -285,7 +357,12 @@ class GuidanceSettings {
             LocationProfile.values
                 .where((value) => value.name == json['locationProfile'])
                 .firstOrNull ??
-            LocationProfile.balanced,
+            LocationProfile.precise,
+        diagnosticsMode:
+            DiagnosticsMode.values
+                .where((v) => v.name == json['diagnosticsMode'])
+                .firstOrNull ??
+            DiagnosticsMode.normal,
         warningDistance: ((json['warningDistance'] as num?)?.toDouble() ?? 20)
             .clamp(10, 200),
         offRouteDistance: ((json['offRouteDistance'] as num?)?.toDouble() ?? 30)

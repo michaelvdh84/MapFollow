@@ -11,6 +11,11 @@ import '../data/location_source.dart';
 import '../data/repository.dart';
 import '../data/route_importer.dart';
 import '../data/voice_service.dart';
+import '../data/battery_source.dart';
+import '../data/diagnostic_exporter.dart';
+import '../data/map_guidance_source.dart';
+import '../domain/run_diagnostics.dart';
+import '../domain/location_filter.dart';
 import '../domain/geo.dart';
 import '../domain/models.dart' as domain;
 import '../domain/navigation.dart';
@@ -35,12 +40,20 @@ class RunController extends ChangeNotifier {
     required this.voice,
     LocationSourceFactory? locationFactory,
     Future<void> Function()? requestNotifications,
+    BatterySource? batterySource,
+    MapGuidanceSource? mapGuidanceSource,
   }) : _locationFactory = locationFactory,
-       _requestNotifications = requestNotifications ?? _androidNotifications;
+       _requestNotifications = requestNotifications ?? _androidNotifications,
+       _batterySource = batterySource ?? AndroidBatterySource(),
+       _mapGuidanceSource = mapGuidanceSource ?? OverpassMapGuidanceSource();
   final RunRepository repository;
   final VoiceService voice;
   final LocationSourceFactory? _locationFactory;
   final Future<void> Function() _requestNotifications;
+  final BatterySource _batterySource;
+  final MapGuidanceSource _mapGuidanceSource;
+  final LocationFilter _locationFilter = LocationFilter();
+  DateTime? _lastBatteryPoll;
   List<domain.Route> routes = [];
   List<domain.RunSession> history = [];
   domain.Route? selectedRoute;
@@ -126,6 +139,7 @@ class RunController extends ChangeNotifier {
         RouteImportException() => e.message,
         GpxExportException() => e.message,
         LocationAccessException() => e.message,
+        MapGuidanceException() => e.message,
         StateError() => e.message.toString(),
         _ =>
           'L’opération a échoué. Vérifiez les autorisations, le fichier et l’espace de stockage.',
@@ -145,6 +159,7 @@ class RunController extends ChangeNotifier {
       if (run.status != domain.RunStatus.finished) {
         recoverable = await repository.loadRun(run.id);
         recoverable!.status = domain.RunStatus.interrupted;
+        recoverable!.batteryInterrupted = true;
         await repository.saveRun(recoverable!);
         break;
       }
@@ -194,6 +209,15 @@ class RunController extends ChangeNotifier {
     await repository.saveRoute(route);
     routes = await repository.listRoutes();
     selectRoute(route);
+  }
+
+  Future<void> prepareMapGuidance() async {
+    final route = selectedRoute;
+    if (route == null || session != null || recoverable != null) {
+      throw StateError('Préparez le parcours avant de démarrer une course.');
+    }
+    final enriched = await _mapGuidanceSource.prepare(route);
+    await saveRoute(enriched);
   }
 
   Future<void> loadDemo() async {
@@ -264,10 +288,12 @@ class RunController extends ChangeNotifier {
       routeId: mode == domain.RunMode.guided ? selectedRoute!.id : null,
       mode: mode,
       locationProfile: settings.locationProfile,
+      diagnosticsMode: settings.diagnosticsMode,
       name: simulated ? 'SIMULATION · $name' : name,
       startedAt: startTime,
       simulated: simulated,
     );
+    await _sampleBattery(run, 'start', persist: false);
     try {
       await repository.createRun(run);
     } catch (_) {
@@ -297,6 +323,8 @@ class RunController extends ChangeNotifier {
     _source = source;
     _traversal = TraversalClassifier.fromSegments(run.segments);
     _speedWindow.clear();
+    _locationFilter.reset();
+    _lastBatteryPoll = DateTime.now().toUtc();
     _engine = run.mode == domain.RunMode.free
         ? null
         : NavigationEngine(
@@ -315,13 +343,14 @@ class RunController extends ChangeNotifier {
     run.status = domain.RunStatus.running;
     _subscription = source.fixes.listen(
       (fix) {
-        _pending = _pending.then((_) => _consume(fix)).catchError((
-          Object _,
-        ) async {
-          await _interrupt(
-            'Enregistrement interrompu. Vérifiez le GPS et l’espace de stockage, puis reprenez la course.',
-          );
-        });
+        final receivedAt = DateTime.now().toUtc();
+        _pending = _pending
+            .then((_) => _consume(fix, receivedAt: receivedAt))
+            .catchError((Object _) async {
+              await _interrupt(
+                'Enregistrement interrompu. Vérifiez le GPS et l’espace de stockage, puis reprenez la course.',
+              );
+            });
       },
       onError: (Object _) {
         _pending = _pending.then(
@@ -341,24 +370,66 @@ class RunController extends ChangeNotifier {
       if (!running) return;
       if (!gpsReliable && lastFix != null && !_gpsWarning) {
         _gpsWarning = true;
-        _gapPending = true;
+        // Measurement timestamps detect actual gaps; avoid resetting points
+        // still buffered behind a slow disk write from this UI timer.
         if (run.mode == domain.RunMode.guided) {
           _say('Signal GPS insuffisant. Guidage suspendu.');
         }
+      }
+      if (run.diagnosticsMode == DiagnosticsMode.diagnostic &&
+          DateTime.now().toUtc().difference(_lastBatteryPoll!).inSeconds >=
+              60) {
+        _lastBatteryPoll = DateTime.now().toUtc();
+        _pending = _pending
+            .then((_) async {
+              if (session == run && running) {
+                await _sampleBattery(run, 'sample');
+              }
+            })
+            .catchError((Object _) async {
+              await _interrupt(
+                'Enregistrement interrompu. Vérifiez l’espace de stockage.',
+              );
+            });
       }
       if (!_disposed) notifyListeners();
     });
     notifyListeners();
   }
 
-  Future<void> _consume(domain.LocationFix fix) async {
+  Future<void> _consume(
+    domain.LocationFix fix, {
+    required DateTime receivedAt,
+  }) async {
     if (!running) return;
     final run = session!;
     final previous = domain.RunSession.fromJson(run.toJson());
     final previousQualityFix = _lastQualityFix;
     final segmentLengths = run.segments.map((s) => s.length).toList();
+    final result = run.simulated
+        ? null
+        : _locationFilter.process(fix, now: receivedAt);
+    final processed = run.simulated ? fix : result!.fix;
     try {
-      await _applyFix(fix);
+      if (result?.newSegment == true) {
+        _gapPending = true;
+        _lastQualityFix = null;
+        _speedWindow.clear();
+      }
+      if (processed == null) {
+        lastFix = fix;
+        _fixReliable = false;
+        if (result?.reason != 'innovation_outlier' &&
+            result?.reason != 'implausible_jump' &&
+            result?.reason != 'speed_inconsistent') {
+          _gapPending = true;
+        }
+        run.activeSeconds = elapsedSeconds;
+        await repository.saveRun(run);
+        if (!_disposed) notifyListeners();
+      } else {
+        await _applyFix(processed, receivedAt: receivedAt);
+      }
     } catch (_) {
       // Une écriture échouée ne doit pas laisser de points non sauvegardés sur la carte.
       _lastQualityFix = previousQualityFix;
@@ -376,6 +447,7 @@ class RunController extends ChangeNotifier {
       }
       _traversal = TraversalClassifier.fromSegments(run.segments);
       _speedWindow.clear();
+      _locationFilter.reset();
       _engine = run.mode == domain.RunMode.free
           ? null
           : NavigationEngine(
@@ -386,9 +458,30 @@ class RunController extends ChangeNotifier {
             );
       rethrow;
     }
+    // GPS has committed at this point. A diagnostic failure must never roll
+    // back memory over a fix already persisted by appendFix's transaction.
+    if (run.diagnosticsMode == DiagnosticsMode.diagnostic) {
+      await repository.appendDiagnostic(
+        run.id,
+        _safeDiagnostic({
+          'event': 'location',
+          'receivedAt': receivedAt.toIso8601String(),
+          'raw': fix.toJson(),
+          'processed': processed?.toJson(),
+          'decision': result?.reason ?? 'simulation',
+          'accepted': processed != null && _fixReliable,
+          'recorded':
+              run.segments.fold<int>(0, (n, s) => n + s.length) >
+              segmentLengths.fold<int>(0, (n, s) => n + s),
+        }),
+      );
+    }
   }
 
-  Future<void> _applyFix(domain.LocationFix fix) async {
+  Future<void> _applyFix(
+    domain.LocationFix fix, {
+    required DateTime receivedAt,
+  }) async {
     if (!running) return;
     final run = session!;
     final previousQualityFix = _lastQualityFix;
@@ -399,13 +492,13 @@ class RunController extends ChangeNotifier {
     final qualityAccepted =
         LocationQuality.accepts(
           fix,
-          now: DateTime.now().toUtc(),
+          now: receivedAt,
           previous: previousQualityFix,
         ) &&
         (previousTimestamp == null || fix.timestamp.isAfter(previousTimestamp));
     // Une position rejetée ne peut pas faire avancer le guidage ni consommer un virage.
     final update = qualityAccepted
-        ? _engine?.update(fix, now: DateTime.now().toUtc())
+        ? _engine?.update(fix, now: receivedAt)
         : null;
     navigation = update;
     lastFix = fix;
@@ -442,7 +535,8 @@ class RunController extends ChangeNotifier {
         ? 0.0
         : distanceBetween(previous.point, fix.point);
     // Ignorer les petites oscillations à l'arrêt, sans compter les interruptions.
-    if (previous == null || moved >= mathRecordingThreshold(fix.accuracy)) {
+    if (previous == null ||
+        moved >= (run.simulated ? mathRecordingThreshold(fix.accuracy) : .75)) {
       if (previous != null &&
           fix.timestamp.difference(previous.timestamp).inMilliseconds > 10000) {
         run.segments.add([]);
@@ -466,7 +560,10 @@ class RunController extends ChangeNotifier {
     } else {
       await repository.saveRun(run);
     }
-    if (update?.announcement != null) _say(update!.announcement!);
+    if (update?.announcement != null &&
+        DateTime.now().toUtc().difference(fix.timestamp).inSeconds <= 10) {
+      _say(update!.announcement!);
+    }
     if (!_disposed) notifyListeners();
   }
 
@@ -500,11 +597,15 @@ class RunController extends ChangeNotifier {
     if (!running) return;
     session!.activeSeconds = elapsedSeconds;
     session!.status = domain.RunStatus.interrupted;
+    session!.batteryInterrupted = true;
     _activeSince = null;
     _gapPending = true;
     error = message;
     await _stopTracking();
     try {
+      if (session!.diagnosticsMode == DiagnosticsMode.diagnostic) {
+        await _sampleBattery(session!, 'interrupted');
+      }
       await repository.saveRun(session!);
     } catch (_) {
       /* Conserver les données en mémoire pour permettre une nouvelle tentative. */
@@ -521,6 +622,9 @@ class RunController extends ChangeNotifier {
     session!.activeSeconds = elapsedSeconds;
     session!.status = domain.RunStatus.paused;
     _activeSince = null;
+    if (session!.diagnosticsMode == DiagnosticsMode.diagnostic) {
+      await _sampleBattery(session!, 'pause');
+    }
     await repository.saveRun(session!);
     notifyListeners();
   }
@@ -547,6 +651,9 @@ class RunController extends ChangeNotifier {
     if (session!.segments.last.isNotEmpty) session!.segments.add([]);
     try {
       _startEngine(source);
+      if (session!.diagnosticsMode == DiagnosticsMode.diagnostic) {
+        await _sampleBattery(session!, 'resume');
+      }
       await repository.saveRun(session!);
     } catch (_) {
       await _interrupt(
@@ -625,6 +732,9 @@ class RunController extends ChangeNotifier {
   /// Course et parcours sont validés dans une seule transaction. En cas d'échec,
   /// la session reste récupérable et les points restent disponibles pour réessayer.
   Future<void> _finalize(domain.RunSession run) async {
+    if (run.batterySamples.lastOrNull?.event != 'finish') {
+      await _sampleBattery(run, 'finish');
+    }
     final previousStatus = run.status;
     final previousEnd = run.endedAt;
     final previousRouteId = run.generatedRouteId;
@@ -671,15 +781,7 @@ class RunController extends ChangeNotifier {
     }
     run.name = name;
     final oldRoute = generatedRoute(run);
-    final route = oldRoute == null
-        ? null
-        : domain.Route(
-            id: oldRoute.id,
-            name: name,
-            segments: oldRoute.segments,
-            cues: oldRoute.cues,
-            sourceFormat: oldRoute.sourceFormat,
-          );
+    final route = oldRoute?.copyWith(name: name);
     await repository.saveRunWithRoute(run, route: route);
     routes = await repository.listRoutes();
     history = await repository.listRuns();
@@ -710,6 +812,84 @@ class RunController extends ChangeNotifier {
         title: 'Exporter la course GPX',
       ),
     );
+  }
+
+  Future<void> _sampleBattery(
+    domain.RunSession run,
+    String event, {
+    bool persist = true,
+  }) async {
+    BatterySample sample;
+    try {
+      sample = run.simulated
+          ? BatterySample(timestamp: DateTime.now().toUtc(), event: event)
+          : await _batterySource.read(event: event);
+    } catch (_) {
+      sample = BatterySample(timestamp: DateTime.now().toUtc(), event: event);
+    }
+    run.batterySamples.add(sample);
+    if (persist) {
+      await repository.saveRun(run);
+      if (run.diagnosticsMode == DiagnosticsMode.diagnostic) {
+        await repository.appendDiagnostic(run.id, {
+          'event': event,
+          'battery': sample.toJson(),
+        });
+      }
+    }
+  }
+
+  Map<String, dynamic> _safeDiagnostic(Map<String, dynamic> data) {
+    Object? safe(Object? value) {
+      if (value is num && !value.isFinite) return null;
+      if (value is Map) {
+        return value.map((key, v) => MapEntry(key.toString(), safe(v)));
+      }
+      if (value is List) return value.map(safe).toList();
+      return value;
+    }
+
+    return Map<String, dynamic>.from(safe(data) as Map);
+  }
+
+  Future<void> exportDiagnostics(String id) async {
+    final run = await repository.loadRun(id);
+    final content = DiagnosticExporter().export(
+      run,
+      diagnostics: await repository.loadDiagnostics(id),
+    );
+    final directory = await getTemporaryDirectory();
+    final file = File('${directory.path}/mapfollow-${run.id}-diagnostic.json');
+    await file.writeAsString(content, flush: true);
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [XFile(file.path, mimeType: 'application/json')],
+        title: 'Exporter le diagnostic local',
+      ),
+    );
+  }
+
+  bool canDeleteGeneratedRoute(domain.RunSession run) =>
+      run.generatedRouteId != null &&
+      ![
+        session,
+        recoverable,
+        ...history.where((r) => r.status != domain.RunStatus.finished),
+      ].any((r) => r?.routeId == run.generatedRouteId);
+
+  Future<void> deleteRun(String id, {bool deleteGeneratedRoute = false}) async {
+    await _pending;
+    final run = await repository.loadRun(id);
+    await repository.deleteRun(id, deleteGeneratedRoute: deleteGeneratedRoute);
+    history = await repository.listRuns();
+    routes = await repository.listRoutes();
+    if (lastFinished?.id == id) lastFinished = null;
+    if (deleteGeneratedRoute && selectedRoute?.id == run.generatedRouteId) {
+      selectedRoute = null;
+      prepared = null;
+      if (routes.isNotEmpty && session == null) selectRoute(routes.first);
+    }
+    notifyListeners();
   }
 
   void dismissError() {

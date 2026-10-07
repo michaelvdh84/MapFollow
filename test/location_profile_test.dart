@@ -17,7 +17,7 @@ void main() {
         LocationProfile.autonomy,
       ];
       const seconds = [1, 2, 5];
-      const distances = [2, 3, 5];
+      const distances = [0, 3, 5];
       for (var i = 0; i < profiles.length; i++) {
         final settings =
             DeviceLocationSource(profile: profiles[i]).profileSettings
@@ -31,7 +31,7 @@ void main() {
         expect(settings.foregroundNotificationConfig?.enableWakeLock, isTrue);
         expect(settings.foregroundNotificationConfig?.setOngoing, isTrue);
       }
-      expect(DeviceLocationSource().profile, LocationProfile.balanced);
+      expect(DeviceLocationSource().profile, LocationProfile.precise);
     },
   );
   test('unavailable speed differs from stopped and raw measured speed', () {

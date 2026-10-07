@@ -4,7 +4,7 @@ MapFollow est un prototype Flutter de guidage et d’enregistrement de parcours.
 
 ## État du projet
 
-Le code courant porte la version `0.3.0+3`; ses 99 tests passent, l’analyse Dart ne signale aucun problème, 44 fichiers ont été formatés sans modification et l’APK debug a été construit et vérifié. Aucun essai manuel ni partage Android réel n’a été effectué. Les résultats de chaque build sont dans [le journal de vérification](docs/verification.md); consultez aussi [PLAN.md](PLAN.md).
+Le code courant porte la version `0.4.0+4` : traitement GPS, intersections préparées explicitement avec OpenStreetMap, batterie Normal/Diagnostic et suppression individuelle de l’historique. Les résultats de validation sont dans [le journal de vérification](docs/verification.md) ; consultez aussi [PLAN.md](PLAN.md) et [le guide des nouveautés](docs/gps-guidance-and-diagnostics.md). La précision réelle reste à mesurer lors d’une nouvelle sortie comparative.
 
 ## Démarrer sur Windows
 
@@ -50,7 +50,7 @@ Remplacez `DEVICE_ID` par l’identifiant affiché par la première commande. Po
 .\.tools\android-sdk\platform-tools\adb.exe install -r build\app\outputs\flutter-apk\app-debug.apk
 ```
 
-L’APK debug courant est `build/app/outputs/flutter-apk/app-debug.apk` : paquet `be.mapfollow.mapfollow`, version `0.3.0` (code 3), minimum Android 26 et SDK compile/target 36; taille 195 516 366 octets. Son SHA-256 et l’APK précédent figurent dans [le journal de vérification](docs/verification.md). Ce build debug n’est pas une version de publication.
+L’APK debug courant est `build/app/outputs/flutter-apk/app-debug.apk` : paquet `be.mapfollow.mapfollow`, version `0.4.0` (code 4), minimum Android 26 et SDK compile/target 36. Les métadonnées et empreintes des builds figurent dans [le journal de vérification](docs/verification.md). Ce build debug n’est pas une version de publication.
 
 ## Dans l’application
 
@@ -62,7 +62,7 @@ Lisez [docs/android.md](docs/android.md) avant les essais avec écran verrouill�
 
 Les parcours et les points d’enregistrement restent en local dans SQLite. Il n’y a ni compte, ni serveur, ni partage de position en direct, ni carte hors ligne. L’affichage des tuiles nécessite Internet. Le service de tuiles reçoit les demandes de carte, qui révèlent notamment la zone consultée et l’adresse IP au service réseau concerné; l’attribution OpenStreetMap reste visible dans l’application.
 
-Les données d’itinéraire sont sensibles. Pour les exemples, journaux, captures ou rapports de bogue, utilisez des coordonnées synthétiques et n’écrivez jamais de vraies traces GPS dans le dépôt ou les logs. L’application ne comporte pas encore d’écran de suppression durable des données. Le manifeste Android désactive les sauvegardes automatiques complètes; le comportement après installation/restauration reste à confirmer sur les versions ciblées. Un GPX partagé suit aussi les règles de l’application qui le reçoit.
+Les données d’itinéraire sont sensibles. Pour les exemples, journaux, captures ou rapports de bogue, utilisez des coordonnées synthétiques et n’écrivez jamais de vraies traces GPS dans le dépôt ou les logs. Une course terminée peut être supprimée avec confirmation ; le parcours généré est conservé par défaut. La préparation OSM transmet explicitement la zone du parcours à Overpass ; le diagnostic contenant des positions s’exporte seulement sur action utilisateur. Le manifeste Android désactive les sauvegardes automatiques complètes; le comportement après restauration reste à confirmer sur les versions ciblées. Un GPX partagé suit aussi les règles de l’application qui le reçoit.
 
 ## Guides
 

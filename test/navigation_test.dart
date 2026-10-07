@@ -98,11 +98,20 @@ void main() {
     'announces by along-track distance, once, and respects configured distance',
     () {
       final r = PreparedRoute(
-        route([
-          const RoutePoint(0, 0),
-          const RoutePoint(0, .001),
-          const RoutePoint(.001, .001),
-        ]),
+        route(
+          [
+            const RoutePoint(0, 0),
+            const RoutePoint(0, .001),
+            const RoutePoint(.001, .001),
+          ],
+          cues: [
+            const NavigationCue(
+              id: 'explicit-turn',
+              point: RoutePoint(0, .001),
+              direction: CueDirection.left,
+            ),
+          ],
+        ),
       );
       final consumed = <String>{};
       final engine = NavigationEngine(r, announcedCueIds: consumed);
@@ -230,4 +239,22 @@ void main() {
     );
     expect(engine.update(fix(.0001, 0), now: clock).progress, lessThan(20));
   });
+  test(
+    'geometric estimates remain visible but are not voiced or next cues',
+    () {
+      final prepared = PreparedRoute(
+        route([
+          const RoutePoint(0, 0),
+          const RoutePoint(0, .001),
+          const RoutePoint(.001, .001),
+        ]),
+      );
+      expect(prepared.cues.single.cue.origin, CueOrigin.geometric);
+      final engine = NavigationEngine(prepared);
+      final update = engine.update(fix(0, .00085), now: clock);
+      expect(update.nextCue, isNull);
+      expect(update.announcement, isNull);
+      expect(engine.announcedCueIds, isEmpty);
+    },
+  );
 }

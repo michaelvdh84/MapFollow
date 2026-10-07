@@ -49,7 +49,7 @@ void main() {
     () async {
       await controller.start(simulated: false, mode: RunMode.free);
       final id = controller.session!.id;
-      expect(profiles.single, LocationProfile.balanced);
+      expect(profiles.single, LocationProfile.precise);
       final announcementsStopped = (controller.voice as FakeVoice).stopped;
       await controller.updateSettings(
         controller.settings.copyWith(locationProfile: LocationProfile.autonomy),
@@ -58,10 +58,10 @@ void main() {
       expect((controller.voice as FakeVoice).stopped, announcementsStopped);
       await controller.pause();
       await controller.resume();
-      expect(profiles, [LocationProfile.balanced, LocationProfile.balanced]);
+      expect(profiles, [LocationProfile.precise, LocationProfile.precise]);
       expect(
         (await repository.loadRun(id)).locationProfile,
-        LocationProfile.balanced,
+        LocationProfile.precise,
       );
       await controller.finishAfterPending();
       await controller.start(simulated: false, mode: RunMode.free);
@@ -98,7 +98,7 @@ void main() {
       expect(sources, hasLength(1));
       expect(controller.recoverable!.id, id);
       await controller.recover();
-      expect(profiles.last, LocationProfile.balanced);
+      expect(profiles.last, LocationProfile.precise);
       expect(controller.session!.traversalControl, TraversalControl.returning);
       expect(
         controller.session!.segments.first.single.point.traversal,
@@ -121,6 +121,8 @@ void main() {
       await emit(0, at, 3);
       await controller.updateTraversalControl(TraversalControl.returning);
       await emit(.00008, at.add(const Duration(seconds: 1)), 3);
+      final recordedLongitude =
+          controller.session!.segments.single[1].point.longitude;
       await controller.updateTraversalControl(TraversalControl.automatic);
       await emit(.00016, at.add(const Duration(seconds: 2)), 3);
       final stored = await repository.loadRun(controller.session!.id);
@@ -133,8 +135,8 @@ void main() {
         TraversalDirection.returning,
       );
       expect(stored.traversalControl, TraversalControl.automatic);
-      // Le manuel ne change ni les positions originales ni le guidage.
-      expect(stored.segments.single[1].point.longitude, .00008);
+      // Auto ne réécrit pas la position déjà traitée et enregistrée en manuel.
+      expect(stored.segments.single[1].point.longitude, recordedLongitude);
       expect(controller.navigation, isNull);
     },
   );

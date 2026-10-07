@@ -16,7 +16,7 @@ Remplir une copie pour chaque appareil et build. Utiliser un parcours synthétiq
 
 ## Procédure ciblée — Run libre
 
-Ces étapes sont à réaliser et à consigner pour chaque émulateur ou appareil. Aucun essai manuel n’est confirmé pour `0.3.0+3`. Utilisez uniquement un Run synthétique sur émulateur; sur téléphone, n’inscrivez aucune coordonnée dans ce compte rendu et ne joignez pas de GPX réel.
+Ces étapes sont à réaliser et à consigner pour chaque émulateur ou appareil. Les résultats partiels de `0.4.0+4` figurent en fin de document ; les validations terrain restent distinctes des tests automatisés. Utilisez uniquement un Run synthétique sur émulateur; sur téléphone, n’inscrivez aucune coordonnée dans ce compte rendu et ne joignez pas de GPX réel.
 
 ### Émulateur Android : vérifier le Run libre sans voix
 
@@ -37,7 +37,7 @@ Ces étapes sont à réaliser et à consigner pour chaque émulateur ou appareil
 
 ### Comparer les trois profils GPS
 
-Effectuez trois Runs GPS réels d’au moins 30 minutes sur le même Samsung, le même itinéraire sûr et dans des conditions aussi proches que possible. Un profil se choisit dans **Réglages** et s’applique au prochain Run; consignez séparément **Précision · 1 s / 2 m**, **Équilibré · 2 s / 3 m** et **Autonomie · 5 s / 5 m**. Ces valeurs sont des demandes au système, pas des promesses d’intervalle ni d’autonomie.
+Effectuez trois Runs GPS réels d’au moins 30 minutes sur le même Samsung, le même itinéraire sûr et dans des conditions aussi proches que possible. Un profil se choisit dans **Réglages** et s’applique au prochain Run; consignez séparément **Précision · 1 s / 0 m**, **Équilibré · 2 s / 3 m** et **Autonomie · 5 s / 5 m**. Ces valeurs sont des demandes au système, pas des promesses d’intervalle ni d’autonomie.
 
 Pour chaque Run, gardez le même réglage réseau et les mêmes conditions d’écran verrouillé, notez le niveau de batterie avant/après, observez l’état GPS et les avertissements, puis ouvrez **Diagnostics GNSS** pendant une portion pour vérifier les satellites vus/utilisés. Pour comparer la cadence effectivement fournie, relevez localement les écarts entre horodatages des points GPX et ne reportez ici que la cadence mesurée en secondes. Ne partagez pas le GPX d’une sortie réelle, ses coordonnées ou des captures; le compte rendu garde uniquement appareil, profil, durée, cadence résumée, batterie et qualité observée.
 
@@ -83,3 +83,21 @@ Pour chaque Run, gardez le même réglage réseau et les mêmes conditions d’�
 - Résultat constaté :
 - Journaux expurgés de toute coordonnée :
 - Session réelle supprimée ou conservée avec consentement :
+
+## Campagne 0.4.0+4 — GPS, OSM, batterie, historique
+
+- Vérifier Précision au prochain départ et le mode Normal/Diagnostic épinglé pendant pause/reprise/récupération.
+- Avec un parcours synthétique, vérifier préparation OSM explicite, origines, aller-retour, absence de virage géométrique vocal et comportement sans réseau.
+- Vérifier batterie début/fin en Normal, relevés minute et courbe en Diagnostic, recharge et données manquantes. L'export JSON doit avertir des positions GPS.
+- Vérifier annulation de suppression, suppression de la course synthétique avec/sans parcours, protection d'un parcours actif. Ne pas supprimer des courses personnelles pour cet essai.
+- Nouvelle sortie comparative avec Garmin, écran verrouillé et YouTube Music : noter distance, cadence et écarts résumés. La cible <3 % reste à vérifier ; aucun rapport ne contient de coordonnées.
+
+### Contrôle ADB du 7 octobre 2026
+
+Appareil : Samsung Galaxy S23 Ultra `SM_S918B`, Android 16 ; MapFollow `0.4.0+4`, APK debug. Installation par `adb install -r` réussie, sans désinstallation ni effacement. Les courses précédentes sont visibles dans l'historique et affichent « Batterie non mesurée ». Le profil Précision est sélectionné et le mode global final est Normal.
+
+Un Run libre réel court en Diagnostic a été créé uniquement pour l'essai, sans export de positions. Le service Geolocator est observé au premier plan, type location, avec notification persistante. La mise en veille affiche `mScreenState=OFF` ; lors du contrôle ultérieur l'écran est revenu ON et le service reste actif. Ce contrôle ne valide pas une course prolongée écran verrouillé. Aucun lecteur YouTube Music actif n'a été confirmé.
+
+Après arrêt du processus et relance, le choix Reprendre / Clôturer sans reprendre apparaît explicitement. La clôture réussit ; le résumé affiche 100 % → 100 %, recharge et interruption signalées, courbe présente. Cela vérifie les lectures et relevés détaillés, pas la consommation : le téléphone est en charge. L'export de diagnostic présente une confirmation, annulée sans partage. La suppression présente son option parcours décochée ; l'annulation conserve l'essai. Le nettoyage de cet essai et de son parcours a ensuite été autorisé explicitement par l'utilisateur ; l'essai n'est plus visible et les anciennes courses restent présentes. Aucun service GPS ne reste actif.
+
+Les contrôles automatiques ont refusé l'extraction de la base et des journaux privés du téléphone. La migration exacte, les exports et le rollback de suppression sont couverts par les tests synthétiques. Restent à réaliser : préparation OSM et partage Android réels, pause/reprise physique, suivi prolongé verrouillé avec YouTube Music, Galaxy S21 5G et nouvelle comparaison Garmin (<3 % non validé).

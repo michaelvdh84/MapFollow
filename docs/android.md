@@ -63,11 +63,11 @@ Si le suivi s’arrête, déverrouillez le téléphone, vérifiez l’autorisati
 
 ### Profils de localisation
 
-Dans **Réglages**, le profil s’applique au prochain Run et reste épinglé dans cette session, y compris lors d’une récupération. Un nouveau choix en Réglages ne change pas une course déjà commencée. Le profil par défaut est **Équilibré**.
+Dans **Réglages**, le profil s’applique au prochain Run et reste épinglé dans cette session, y compris lors d’une récupération. Un nouveau choix en Réglages ne change pas une course déjà commencée. Le défaut des nouveaux réglages est **Précision** ; les préférences explicitement enregistrées sont conservées.
 
 | Profil | Niveau de précision demandé | Cadence demandée | Filtre de distance demandé |
 |---|---|---:|---:|
-| Précision | `bestForNavigation` | 1 s | 2 m |
+| Précision | `bestForNavigation` | 1 s | 0 m |
 | Équilibré | `high` | 2 s | 3 m |
 | Autonomie | `high` | 5 s | 5 m |
 
@@ -92,3 +92,7 @@ Sur Samsung Galaxy S23 Ultra et Galaxy S21 5G, si le suivi écran verrouillé se
 ## Réseau et carte
 
 La carte utilise des tuiles en ligne OpenStreetMap et montre leur attribution. Une perte de réseau peut laisser une carte vide ou incomplète; les traces de course restent enregistrées localement, mais le fond de carte n’est pas disponible hors ligne. Les demandes de tuiles révèlent au service réseau concerné l’adresse IP et les secteurs affichés. Respectez les [règles d’utilisation des tuiles OpenStreetMap](https://operations.osmfoundation.org/policies/tiles/); ne préchargez pas les tuiles pour un usage hors ligne.
+
+## Nouveautés 0.4.0+4
+
+Voir [GPS, intersections et diagnostics](gps-guidance-and-diagnostics.md) pour le filtrage local, la préparation OSM explicite, les modes batterie et la suppression confirmée de l'historique. Les mesures batterie proviennent du téléphone entier ; elles ne sont pas une attribution à MapFollow.

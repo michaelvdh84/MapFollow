@@ -2,7 +2,15 @@ import 'dart:async';
 import 'package:mapfollow/data/location_source.dart';
 import 'package:mapfollow/data/repository.dart';
 import 'package:mapfollow/data/voice_service.dart';
+import 'package:mapfollow/data/battery_source.dart';
+import 'package:mapfollow/domain/run_diagnostics.dart';
 import 'package:mapfollow/domain/models.dart';
+
+class FakeBatterySource implements BatterySource {
+  @override
+  Future<BatterySample> read({String event = 'sample'}) async =>
+      BatterySample(timestamp: DateTime.now().toUtc(), event: event);
+}
 
 class MemoryRepository implements RunRepository {
   final routes = <String, Route>{};
@@ -10,6 +18,38 @@ class MemoryRepository implements RunRepository {
   final points = <String, List<(int, LocationFix)>>{};
   GuidanceSettings settings = const GuidanceSettings();
   bool failWrites = false;
+  final diagnostics = <String, List<Map<String, dynamic>>>{};
+  @override
+  Future<void> appendDiagnostic(
+    String runId,
+    Map<String, dynamic> event,
+  ) async {
+    if (failWrites) throw StateError('Synthetic disk failure');
+    (diagnostics[runId] ??= []).add(event);
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> loadDiagnostics(String runId) async =>
+      diagnostics[runId] ?? [];
+  @override
+  Future<void> deleteRun(String id, {bool deleteGeneratedRoute = false}) async {
+    if (failWrites) throw StateError('Synthetic disk failure');
+    final run = RunSession.fromJson(runs[id]!);
+    if (run.status != RunStatus.finished) throw StateError('Course active.');
+    if (deleteGeneratedRoute && run.generatedRouteId != null) {
+      if (runs.values.any(
+        (r) =>
+            r['status'] != 'finished' && r['routeId'] == run.generatedRouteId,
+      )) {
+        throw StateError('Parcours actif.');
+      }
+      routes.remove(run.generatedRouteId);
+    }
+    runs.remove(id);
+    points.remove(id);
+    diagnostics.remove(id);
+  }
+
   @override
   Future<void> saveRoute(Route route) async {
     routes[route.id] = route;

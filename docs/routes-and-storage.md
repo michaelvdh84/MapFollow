@@ -14,11 +14,11 @@ Une course libre n’a pas de parcours source et ne lance pas le guidage vocal. 
 
 ## Profil GPS, métriques et couches aller/retour
 
-Dans **Réglages**, choisissez le profil GPS qui sera appliqué à la prochaine course. La sélection par défaut est **Équilibré**. Le profil est ensuite épinglé à la session, conservé lors de la récupération, et n’est pas modifié par un changement des réglages pendant la course. Ces intervalles sont des demandes à Android; le système décide des positions effectivement livrées, et aucune économie de batterie n’est garantie.
+Dans **Réglages**, choisissez le profil GPS qui sera appliqué à la prochaine course. La sélection par défaut est **Précision** ; une préférence déjà enregistrée est conservée. Le profil est ensuite épinglé à la session, conservé lors de la récupération, et n’est pas modifié par un changement des réglages pendant la course. Ces intervalles sont des demandes à Android; le système décide des positions effectivement livrées, et aucune économie de batterie n’est garantie.
 
 | Profil | Précision demandée | Intervalle demandé | Déplacement minimal demandé |
 |---|---|---:|---:|
-| Précision | `bestForNavigation` | 1 s | 2 m |
+| Précision | `bestForNavigation` | 1 s | 0 m |
 | Équilibré | `high` | 2 s | 3 m |
 | Autonomie | `high` | 5 s | 5 m |
 
@@ -34,7 +34,7 @@ La simulation guidée avance à 3 m/s pour essayer les annonces et le suivi sans
 
 ## Exporter en GPX
 
-Depuis l’historique, partagez la session au format GPX via la feuille de partage Android. Le fichier préserve les limites entre segments. Dans l’espace de noms MapFollow, `mf:run` enregistre mode, durée active, distance, simulation, profil GPS, contrôle Aller/Retour et, si disponible, date de fin; chaque point exporte les métadonnées GPS disponibles `mf:accuracyMeters`, `mf:speedMetersPerSecond`, `mf:headingDegrees` et son libellé `mf:traversalDirection` (valeur `outbound` ou `returning`). Un champ absent ou invalide n’est pas exporté. Une copie temporaire est créée pour le partage et est supprimée lorsque Android vide le cache de l’application; elle peut donc subsister quelque temps dans le cache. Il n’y a pas encore de bouton pour effacer une session ou supprimer immédiatement ce fichier temporaire.
+Depuis l’historique, partagez la session au format GPX via la feuille de partage Android. Le fichier préserve les limites entre segments. Dans l’espace de noms MapFollow, `mf:run` enregistre mode, durée active, distance, simulation, profil GPS, contrôle Aller/Retour et, si disponible, date de fin; chaque point exporte les métadonnées GPS disponibles `mf:accuracyMeters`, `mf:speedMetersPerSecond`, `mf:headingDegrees` et son libellé `mf:traversalDirection` (valeur `outbound` ou `returning`). Un champ absent ou invalide n’est pas exporté. Une copie temporaire est créée pour le partage et est supprimée lorsque Android vide le cache de l’application; elle peut donc subsister quelque temps dans le cache. Le bouton Supprimer de l'historique efface une course terminée et ses diagnostics après confirmation ; une option permet aussi d'effacer son parcours généré. Les fichiers déjà exportés restent à leur destination et les fichiers temporaires suivent la durée de vie du cache Android.
 
 ### Extensions GPX MapFollow
 
@@ -73,6 +73,8 @@ L’espace de noms `mf` est versionné à l’adresse `https://github.com/michae
 
 Les unités sont les suivantes : altitude `ele`, précision et distance en mètres; vitesse en mètres par seconde; cap en degrés, de 0 inclus à 360 exclu; durée active en secondes. Les dates de `metadata/time`, des points et de `endedAt` sont écrites en UTC, avec le suffixe `Z`. `locationProfile` vaut `precise`, `balanced` ou `autonomy`; `traversalControl` vaut `automatic`, `outbound` ou `returning`. `mf:traversalDirection` vaut `outbound` ou `returning`. Une métadonnée absente ou invalide est omise; par exemple le cap doit être fini et satisfaire `0 ≤ cap < 360`.
 
-À l’import GPX, la géométrie standard et ses segments restent exploitables comme parcours, avec les champs standards reconnus par l’importateur. L’import reconnaît aussi `mf:traversalDirection` lorsque le nom et l’URI du namespace correspondent exactement à `mf`; les libellés sont réutilisés pour les calques Aller/Retour. Les attributs de `mf:run` (mode, durée, profil, contrôle de sens, etc.) restent informatifs : ils ne reconstituent pas une `RunSession` dans l’historique et ne restaurent pas tous les détails d’une course. Des extensions d’un autre namespace portant simplement le même nom local sont ignorées. Les anciennes sessions qui n’ont pas le champ `locationProfile` sont lues avec le profil `precise`; les réglages globaux nouvellement créés utilisent `balanced` par défaut.
+À l’import GPX, la géométrie standard et ses segments restent exploitables comme parcours, avec les champs standards reconnus par l’importateur. L’import reconnaît aussi `mf:traversalDirection` lorsque le nom et l’URI du namespace correspondent exactement à `mf`; les libellés sont réutilisés pour les calques Aller/Retour. Les attributs de `mf:run` (mode, durée, profil, contrôle de sens, etc.) restent informatifs : ils ne reconstituent pas une `RunSession` dans l’historique et ne restaurent pas tous les détails d’une course. Des extensions d’un autre namespace portant simplement le même nom local sont ignorées. Les anciennes sessions qui n’ont pas le champ `locationProfile` sont lues avec le profil `precise`; les réglages globaux nouvellement créés utilisent `precise` par défaut ; une préférence sauvegardée est conservée.
 
-Les 52 tests mentionnés dans le journal précédent correspondent à la version `0.2.0+2`; ils ne valident pas la version courante `0.3.0+3`. Voir [le journal de vérification](verification.md) pour les contrôles de chaque version. Le partage Android sur appareil reste à vérifier lors des essais terrain.
+Voir [le journal de vérification](verification.md) pour les contrôles de chaque version. Les résultats des versions précédentes ne valident pas `0.4.0+4`. Le partage Android sur appareil reste à vérifier lors des essais terrain.
+
+Les nouveautés GPS, intersections OSM, batterie et suppression de `0.4.0+4` sont décrites dans [le guide dédié](gps-guidance-and-diagnostics.md). Les résultats des versions précédentes restent historiques.

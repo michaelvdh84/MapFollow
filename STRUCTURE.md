@@ -9,6 +9,9 @@ lib/
     models.dart       Route, RouteSegment, RoutePoint, NavigationCue,
                       LocationFix, RunSession
     location_quality.dart règles communes de qualité et état GPS
+    location_filter.dart filtre Kalman local et rejet des sauts
+    map_guidance.dart graphe des connexions OSM et indications ordonnées
+    run_diagnostics.dart mode diagnostic et instantanés batterie
     recorded_route.dart conversion d’une session libre en parcours sauvegardé
     speed_window.dart moyenne glissante des vitesses
     traversal_classifier.dart classification des passages Aller/Retour
@@ -16,7 +19,10 @@ lib/
     geo.dart          calculs géographiques
     navigation.dart   progression et génération des indications
   data/
-    repository.dart       persistance SQLite locale
+    repository.dart       persistance SQLite locale v2 et suppression atomique
+    map_guidance_source.dart Overpass explicite et cache local borné
+    battery_source.dart lecture du pont batterie Android
+    diagnostic_exporter.dart export JSON local déclenché par utilisateur
     location_source.dart  GPS réel / simulation
     voice_service.dart    annonces et pont audio Android
     gnss_source.dart      lecture du statut satellite Android
@@ -48,8 +54,8 @@ Une session porte un mode guidé ou libre. Le mode libre n’a pas de parcours s
 
 | Profil | Précision demandée | Intervalle | Distance minimale demandée |
 |---|---|---:|---:|
-| Précision | `bestForNavigation` | 1 s | 2 m |
-| Équilibré (défaut) | `high` | 2 s | 3 m |
+| Précision | `bestForNavigation` | 1 s | 0 m |
+| Équilibré | `high` | 2 s | 3 m |
 | Autonomie | `high` | 5 s | 5 m |
 
 Un changement de profil dans Réglages concerne la prochaine course; la course en cours conserve son profil épinglé. Les anciennes sessions sans champ profil sont interprétées comme `precise`.
@@ -85,3 +91,7 @@ Le code n’utilise pas directement le résultat de focus intégré de `flutter_
 ## Confidentialité dans le code
 
 Utilisez des coordonnées synthétiques dans les exemples, logs, captures et rapports. Le partage GPX déclenché par l’utilisateur dans l’application reste une fonction prévue. Le manifeste et les règles d’extraction désactivent sauvegarde cloud et transfert appareil; ne promettez pas de comportement de restauration plus large sans l’avoir vérifié sur un appareil.
+
+## Extension 0.4.0+4
+
+Les GPS réels passent par le filtre du domaine avant le contrôleur de distance/navigation ; les simulations restent déterministes. La préparation Overpass utilise un isolate pour construire les indications sans modifier la géométrie. L'origine et la distance ordonnée des indications sont persistées avec Route. NavigationEngine ignore les estimations géométriques pour la voix et l'indication suivante. RunSession épingle le mode diagnostic et stocke les relevés batterie ; les diagnostics GPS sont dans une table séparée, chargés seulement pour export. La suppression de course, points et diagnostics est transactionnelle. Voir [le comportement et les bornes](docs/gps-guidance-and-diagnostics.md).

@@ -36,6 +36,7 @@ void main() {
       final controller = RunController(
         repository: repository,
         voice: FakeVoice(),
+        batterySource: FakeBatterySource(),
         requestNotifications: () async {},
         locationFactory: (_, _, _, _) => source,
       );
@@ -60,6 +61,11 @@ void main() {
       );
       expect(find.text('© OpenStreetMap contributors · ODbL'), findsOneWidget);
 
+      await Scrollable.ensureVisible(
+        tester.element(find.text('Lancer un Run libre')),
+        alignment: .5,
+      );
+      await tester.pump();
       await tester.tap(find.text('Lancer un Run libre'));
       await tester.pump();
       await tester.pump();
