@@ -40,7 +40,10 @@ class HistoryTools extends StatelessWidget {
                   );
                   if (confirmed == true) {
                     await controller.perform(
-                      () => controller.exportDiagnostics(run.id),
+                      () => controller.exportDiagnostics(
+                        run.id,
+                        includePositions: true,
+                      ),
                     );
                   }
                 },

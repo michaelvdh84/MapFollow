@@ -60,6 +60,7 @@ void main() {
                 DiagnosticExporter().export(
                   session(DiagnosticsMode.diagnostic),
                   diagnostics: diagnostics,
+                  includePositions: true,
                 ),
               )
               as Map;
@@ -69,6 +70,50 @@ void main() {
       expect((events[1] as Map)['innovation'], isNull);
       expect(events.last, isEmpty);
       expect((events.first as Map)['raw']['speed'], isNull);
+    },
+  );
+  test(
+    'default detailed export removes coordinates recursively but retains analysis metrics',
+    () {
+      final events = [
+        for (var i = 0; i < 3; i++)
+          <String, dynamic>{
+            'event': 'location',
+            'receivedAt': now
+                .add(Duration(milliseconds: i * 500))
+                .toIso8601String(),
+            'raw': {
+              'point': {'lat': 1.0, 'lon': 2.0},
+              'timestamp': now
+                  .add(Duration(milliseconds: i * 500))
+                  .toIso8601String(),
+              'accuracy': 3.0,
+              'speed': 2.0,
+            },
+            'processed': {
+              'point': {'lat': 1.0, 'lon': 2.0},
+              'speed': 2.0,
+            },
+            'decision': i == 2 ? 'speed_inconsistent' : 'filtered',
+            'accepted': i != 2,
+            'recorded': i != 2,
+          },
+      ];
+      final content = DiagnosticExporter().export(
+        session(DiagnosticsMode.diagnostic),
+        diagnostics: events,
+      );
+      final data = jsonDecode(content) as Map;
+      expect(content, isNot(contains('"lat"')));
+      expect(content, isNot(contains('"point"')));
+      expect(data['positionsIncluded'], false);
+      expect(data.containsKey('segments'), false);
+      expect(data['diagnostics'][0]['raw']['speed'], 2);
+      expect(data['summary']['receivedFixCount'], 3);
+      expect(data['summary']['acceptedFixCount'], 2);
+      expect(data['summary']['measurementCadenceSeconds']['median'], .5);
+      expect(data['summary']['filterDecisions']['speed_inconsistent'], 1);
+      expect(data['summary']['locationFilterVersion'], 'unknown');
     },
   );
 }

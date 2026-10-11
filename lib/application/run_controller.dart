@@ -91,8 +91,9 @@ class RunController extends ChangeNotifier {
     bool simulated,
     double progress,
     domain.LocationProfile profile,
-    domain.RunMode mode,
-  ) =>
+    domain.RunMode mode, {
+    int? intervalMillis,
+  }) =>
       _locationFactory?.call(route, simulated, progress, profile) ??
       (simulated
           ? SimulatedLocationSource(
@@ -100,7 +101,10 @@ class RunController extends ChangeNotifier {
               initialProgress: progress,
               returnToStart: mode == domain.RunMode.free,
             )
-          : DeviceLocationSource(profile: profile));
+          : DeviceLocationSource(
+              profile: profile,
+              intervalMillis: intervalMillis,
+            ));
 
   bool get running => session?.status == domain.RunStatus.running;
   domain.LocationFix? get mapFix => _lastQualityFix;
@@ -265,6 +269,7 @@ class RunController extends ChangeNotifier {
       0,
       settings.locationProfile,
       mode,
+      intervalMillis: settings.locationIntervalMillis,
     );
     // Refus de permission ou voix manquante : aucune course fantôme en base.
     try {
@@ -288,6 +293,8 @@ class RunController extends ChangeNotifier {
       routeId: mode == domain.RunMode.guided ? selectedRoute!.id : null,
       mode: mode,
       locationProfile: settings.locationProfile,
+      locationIntervalMillis: settings.locationIntervalMillis,
+      locationFilterVersion: simulated ? 'simulation' : LocationFilter.version,
       diagnosticsMode: settings.diagnosticsMode,
       name: simulated ? 'SIMULATION · $name' : name,
       startedAt: startTime,
@@ -554,6 +561,8 @@ class RunController extends ChangeNotifier {
         accuracy: fix.accuracy,
         speed: fix.speed,
         heading: fix.heading,
+        speedAccuracy: fix.speedAccuracy,
+        headingAccuracy: fix.headingAccuracy,
       );
       run.segments.last.add(recordedFix);
       await repository.appendFix(run, recordedFix, run.segments.length - 1);
@@ -637,6 +646,7 @@ class RunController extends ChangeNotifier {
       session!.progress,
       session!.locationProfile,
       session!.mode,
+      intervalMillis: session!.locationIntervalMillis,
     );
     try {
       await source.prepare();
@@ -852,14 +862,32 @@ class RunController extends ChangeNotifier {
     return Map<String, dynamic>.from(safe(data) as Map);
   }
 
-  Future<void> exportDiagnostics(String id) async {
+  Future<String> diagnosticDocument(
+    String id, {
+    bool includePositions = false,
+  }) async {
+    await _pending;
     final run = await repository.loadRun(id);
-    final content = DiagnosticExporter().export(
+    if (run.status != domain.RunStatus.finished) {
+      throw StateError('Terminez la course avant d’exporter ses logs.');
+    }
+    return DiagnosticExporter().export(
       run,
       diagnostics: await repository.loadDiagnostics(id),
+      includePositions: includePositions,
+    );
+  }
+
+  Future<void> exportDiagnostics(
+    String id, {
+    bool includePositions = false,
+  }) async {
+    final content = await diagnosticDocument(
+      id,
+      includePositions: includePositions,
     );
     final directory = await getTemporaryDirectory();
-    final file = File('${directory.path}/mapfollow-${run.id}-diagnostic.json');
+    final file = File('${directory.path}/mapfollow-$id-diagnostic.json');
     await file.writeAsString(content, flush: true);
     await SharePlus.instance.share(
       ShareParams(

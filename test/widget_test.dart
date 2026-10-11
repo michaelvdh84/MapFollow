@@ -23,12 +23,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Prévenir 20 m avant le virage'), findsOneWidget);
       final slider = find.byType(Slider).first;
+      await tester.ensureVisible(slider);
+      await tester.pumpAndSettle();
       await tester.drag(slider, const Offset(100, 0));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(
-        find.text('Enregistrer les réglages'),
-        200,
-      );
       await Scrollable.ensureVisible(
         tester.element(find.text('Enregistrer les réglages')),
         alignment: .5,

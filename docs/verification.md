@@ -1,6 +1,26 @@
 # Journal de vérification
 
-## Contrôles de la version actuelle — `0.4.0+4` (7 octobre 2026)
+## Contrôles de la version actuelle — `0.5.0+5` (11 octobre 2026)
+
+| Contrôle | Commande / méthode | Résultat |
+|---|---|---|
+| Analyse Dart | `scripts/flutter.ps1 analyze` | Aucun problème ; 60,3 s |
+| Suite complète | `scripts/flutter.ps1 test` | 157 tests réussis ; 65 s |
+| Formatage | `dart format --output=none --set-exit-if-changed lib test` | 62 fichiers ; 0 modifié |
+| Build Android debug livré | `scripts/flutter.ps1 run --no-pub -d <S23>` | Build Gradle réussi ; 57,8 s |
+| APK / AAPT | Paquet, version, SDK, taille, SHA-256 | `be.mapfollow.mapfollow`, `0.5.0` code 5 ; minSdk 26, compile/target 36 ; 119 020 850 octets ; `661593E3B2C586BF1F450F9DF4FC7C202CF7D1673672455365383A29BDB6C15F` |
+| Flutter MCP | Reconnexion, hot reload, erreurs d'exécution | Rechargement réussi après les dernières modifications ; aucune erreur remontée |
+| S23 Ultra | Installation sans effacement, Developer, redémarrage, export | 0,5 s conservé après démarrage à froid ; historique présent ; logs d'une course Normal ouvrent la feuille de partage Android, annulée sans envoi ; mode final Normal |
+| S21 5G | Même APK, `adb install -r`, démarrage et version du paquet | Succès ; `SM-G991B`, Android 15 ; version `0.5.0` code 5 ; quatre onglets visibles ; aucun Run lancé ni permission accordée automatiquement |
+| Nouvelle précision terrain | Sortie comparative Garmin | Non mesurée avec cette version ; cible ≤2 % à vérifier |
+
+Les tests supplémentaires couvrent l'intervalle personnalisé et sa récupération, les indicateurs de présence Android, les exports avec positions exclues par défaut et consentement explicite, ainsi que le comportement du filtre à 1 s, 0,5 s et 0,25 s. Sur une ligne droite synthétique bruitée, la distance reste à moins de 2 % de la référence ; les courbes, virages, arrêts et incertitudes de vitesse ont leurs propres critères. Ces résultats ne prouvent pas la précision sur une course réelle.
+
+Le dernier GPX utilisateur, enregistré avec la version précédente, donne 7 270,7 m au total et 7 223,9 m sur les instants communs à Garmin. Face aux 7 020 m affichés par la montre, l'écart commun est +2,91 %. Le GPX Garmin lui-même mesure 6 956,9 m ; il faut distinguer sa longueur géométrique du compteur de la montre. Les calculs sont réalisés en mémoire et seuls ces agrégats sont consignés.
+
+La feuille Android d'export Normal est vérifiée sans envoi ; les détails Diagnostic, leur export avec positions et le suivi prolongé écran verrouillé restent à vérifier sur la nouvelle sortie. Aucun Run d'essai supplémentaire n'a été créé ni supprimé. Les avertissements de build JDK, Kotlin Gradle Plugin et XML SDK restent non bloquants.
+
+## Contrôles précédents — `0.4.0+4` (7 octobre 2026)
 
 | Contrôle | Commande / méthode | Résultat |
 |---|---|---|

@@ -33,7 +33,7 @@ class GpxExporter {
         '    <time>${session.startedAt.toUtc().toIso8601String()}</time>',
       )
       ..writeln(
-        '    <extensions><mf:run mode="${session.mode.name}" activeSeconds="${session.activeSeconds}" distanceMeters="${_number(session.distance)}" simulated="${session.simulated}" locationProfile="${session.locationProfile.name}" traversalControl="${session.traversalControl.name}"${session.endedAt == null ? '' : ' endedAt="${session.endedAt!.toUtc().toIso8601String()}"'}/></extensions>',
+        '    <extensions><mf:run mode="${session.mode.name}" activeSeconds="${session.activeSeconds}" distanceMeters="${_number(session.distance)}" simulated="${session.simulated}" locationProfile="${session.locationProfile.name}" requestedLocationIntervalMillis="${session.requestedLocationIntervalMillis}"${session.locationFilterVersion == null ? '' : ' locationFilterVersion="${_escape(session.locationFilterVersion!)}"'} traversalControl="${session.traversalControl.name}"${session.endedAt == null ? '' : ' endedAt="${session.endedAt!.toUtc().toIso8601String()}"'}/></extensions>',
       )
       ..writeln('  </metadata>')
       ..writeln('  <trk><name>${_escape(safeName)}</name>');

@@ -52,7 +52,7 @@ void main() {
       expect(
         xml,
         contains(
-          '<mf:run mode="guided" activeSeconds="0" distanceMeters="0.0" simulated="true" locationProfile="precise" traversalControl="automatic"/>',
+          '<mf:run mode="guided" activeSeconds="0" distanceMeters="0.0" simulated="true" locationProfile="precise" requestedLocationIntervalMillis="1000" traversalControl="automatic"/>',
         ),
       );
       expect(xml, contains('<mf:accuracyMeters>4.0</mf:accuracyMeters>'));
@@ -183,7 +183,9 @@ void main() {
     final xml = GpxExporter().export(session);
     expect(
       xml,
-      contains('locationProfile="autonomy" traversalControl="returning"'),
+      contains(
+        'locationProfile="autonomy" requestedLocationIntervalMillis="5000" traversalControl="returning"',
+      ),
     );
     expect(RegExp('<mf:speedMetersPerSecond>').allMatches(xml), hasLength(1));
     final route = RouteImporter().parse(xml, fileName: 'synthetic.gpx').single;

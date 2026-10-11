@@ -21,18 +21,25 @@ class LocationAccessException implements Exception {
 }
 
 class DeviceLocationSource implements LocationSource {
-  DeviceLocationSource({this.profile = LocationProfile.precise});
+  DeviceLocationSource({
+    this.profile = LocationProfile.precise,
+    this.intervalMillis,
+  });
   final LocationProfile profile;
+  final int? intervalMillis;
   StreamSubscription<Position>? _subscription;
   StreamController<LocationFix>? _controller;
 
   /// Cadences demandées à Android ; le système reste maître des livraisons.
   LocationSettings get profileSettings {
-    final distance = switch (profile) {
-      LocationProfile.precise => 0,
-      LocationProfile.balanced => 3,
-      LocationProfile.autonomy => 5,
-    };
+    final customInterval = validLocationIntervalMillis(intervalMillis);
+    final distance = customInterval != null
+        ? 0
+        : switch (profile) {
+            LocationProfile.precise => 0,
+            LocationProfile.balanced => 3,
+            LocationProfile.autonomy => 5,
+          };
     final accuracy = profile == LocationProfile.precise
         ? LocationAccuracy.bestForNavigation
         : LocationAccuracy.high;
@@ -41,11 +48,8 @@ class DeviceLocationSource implements LocationSource {
         accuracy: accuracy,
         distanceFilter: distance,
         intervalDuration: Duration(
-          seconds: switch (profile) {
-            LocationProfile.precise => 1,
-            LocationProfile.balanced => 2,
-            LocationProfile.autonomy => 5,
-          },
+          milliseconds:
+              customInterval ?? defaultLocationIntervalMillis(profile),
         ),
         foregroundNotificationConfig: const ForegroundNotificationConfig(
           notificationTitle: 'MapFollow — course en cours',
@@ -68,6 +72,33 @@ class DeviceLocationSource implements LocationSource {
 
   static double? normalizeSpeed(double speed) =>
       speed.isFinite && speed >= 0 ? speed : null;
+
+  /// Les zéros du plugin sans indicateur de présence ne sont pas des mesures.
+  static LocationFix normalizePosition(Position position) => LocationFix(
+    point: RoutePoint(
+      position.latitude,
+      position.longitude,
+      elevation: position.hasAltitude && position.altitude.isFinite
+          ? position.altitude
+          : null,
+    ),
+    timestamp: position.timestamp,
+    accuracy: position.hasAccuracy ? position.accuracy : double.nan,
+    speed: position.hasSpeed ? normalizeSpeed(position.speed) : null,
+    heading:
+        position.hasHeading &&
+            position.heading.isFinite &&
+            position.heading >= 0 &&
+            position.heading < 360
+        ? position.heading
+        : null,
+    speedAccuracy: position.hasSpeedAccuracy
+        ? normalizeSpeed(position.speedAccuracy)
+        : null,
+    headingAccuracy: position.hasHeadingAccuracy
+        ? normalizeSpeed(position.headingAccuracy)
+        : null,
+  );
   @override
   Future<void> prepare() async {
     // À appeler depuis un bouton visible, avant de lancer le service Android.
@@ -105,21 +136,7 @@ class DeviceLocationSource implements LocationSource {
     _subscription =
         Geolocator.getPositionStream(locationSettings: profileSettings).listen(
           (position) {
-            _controller?.add(
-              LocationFix(
-                point: RoutePoint(
-                  position.latitude,
-                  position.longitude,
-                  elevation: position.altitudeAccuracy > 0
-                      ? position.altitude
-                      : null,
-                ),
-                timestamp: position.timestamp,
-                accuracy: position.accuracy,
-                speed: normalizeSpeed(position.speed),
-                heading: position.heading >= 0 ? position.heading : null,
-              ),
-            );
+            _controller?.add(normalizePosition(position));
           },
           onError: (Object error, StackTrace stack) {
             _controller?.addError(error, stack);

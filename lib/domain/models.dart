@@ -17,6 +17,16 @@ enum RunMode { guided, free }
 /// Le téléphone choisit les constellations ; ce profil règle uniquement les demandes GPS.
 enum LocationProfile { precise, balanced, autonomy }
 
+int defaultLocationIntervalMillis(LocationProfile profile) => switch (profile) {
+  LocationProfile.precise => 1000,
+  LocationProfile.balanced => 2000,
+  LocationProfile.autonomy => 5000,
+};
+
+/// Bornes du réglage développeur ; null conserve la cadence du profil.
+int? validLocationIntervalMillis(Object? value) =>
+    value is int && value >= 250 && value <= 10000 ? value : null;
+
 enum TraversalDirection { outbound, returning }
 
 /// Le choix manuel concerne les prochains points, jamais les points déjà sauvegardés.
@@ -186,6 +196,8 @@ class LocationFix {
     required this.accuracy,
     this.speed,
     this.heading,
+    this.speedAccuracy,
+    this.headingAccuracy,
   });
   final RoutePoint point;
   final DateTime timestamp;
@@ -194,12 +206,16 @@ class LocationFix {
   /// Absence de mesure distincte de l'immobilité (zéro), notamment pour l'allure.
   final double? speed;
   final double? heading;
+  final double? speedAccuracy;
+  final double? headingAccuracy;
   Map<String, dynamic> toJson() => {
     'point': point.toJson(),
     'timestamp': timestamp.toUtc().toIso8601String(),
     'accuracy': accuracy,
     'speed': speed,
     'heading': heading,
+    'speedAccuracy': speedAccuracy,
+    'headingAccuracy': headingAccuracy,
   };
   factory LocationFix.fromJson(Map<String, dynamic> json) => LocationFix(
     point: RoutePoint.fromJson(Map<String, dynamic>.from(json['point'] as Map)),
@@ -207,6 +223,8 @@ class LocationFix {
     accuracy: (json['accuracy'] as num).toDouble(),
     speed: (json['speed'] as num?)?.toDouble(),
     heading: (json['heading'] as num?)?.toDouble(),
+    speedAccuracy: (json['speedAccuracy'] as num?)?.toDouble(),
+    headingAccuracy: (json['headingAccuracy'] as num?)?.toDouble(),
   );
 }
 
@@ -225,6 +243,8 @@ class RunSession {
     this.distance = 0,
     this.progress = 0,
     this.locationProfile = LocationProfile.precise,
+    this.locationIntervalMillis,
+    this.locationFilterVersion,
     this.traversalControl = TraversalControl.automatic,
     this.diagnosticsMode = DiagnosticsMode.normal,
     List<BatterySample>? batterySamples,
@@ -251,6 +271,11 @@ class RunSession {
   double distance;
   double progress;
   final LocationProfile locationProfile;
+  final int? locationIntervalMillis;
+  final String? locationFilterVersion;
+  int get requestedLocationIntervalMillis =>
+      validLocationIntervalMillis(locationIntervalMillis) ??
+      defaultLocationIntervalMillis(locationProfile);
   TraversalControl traversalControl;
   final DiagnosticsMode diagnosticsMode;
   final List<BatterySample> batterySamples;
@@ -271,6 +296,8 @@ class RunSession {
     'distance': distance,
     'progress': progress,
     'locationProfile': locationProfile.name,
+    'locationIntervalMillis': locationIntervalMillis,
+    'locationFilterVersion': locationFilterVersion,
     'traversalControl': traversalControl.name,
     'diagnosticsMode': diagnosticsMode.name,
     'batterySamples': batterySamples.map((s) => s.toJson()).toList(),
@@ -300,6 +327,10 @@ class RunSession {
             .where((value) => value.name == json['locationProfile'])
             .firstOrNull ??
         LocationProfile.precise,
+    locationIntervalMillis: validLocationIntervalMillis(
+      json['locationIntervalMillis'],
+    ),
+    locationFilterVersion: json['locationFilterVersion'] as String?,
     traversalControl:
         TraversalControl.values
             .where((value) => value.name == json['traversalControl'])
@@ -324,24 +355,31 @@ class GuidanceSettings {
     this.offRouteDistance = 30,
     this.voiceVolume = 1,
     this.locationProfile = LocationProfile.precise,
+    this.locationIntervalMillis,
     this.diagnosticsMode = DiagnosticsMode.normal,
   });
   final double warningDistance;
   final double offRouteDistance;
   final double voiceVolume;
   final LocationProfile locationProfile;
+  final int? locationIntervalMillis;
   final DiagnosticsMode diagnosticsMode;
   GuidanceSettings copyWith({
     double? warningDistance,
     double? offRouteDistance,
     double? voiceVolume,
     LocationProfile? locationProfile,
+    int? locationIntervalMillis,
+    bool clearLocationInterval = false,
     DiagnosticsMode? diagnosticsMode,
   }) => GuidanceSettings(
     warningDistance: warningDistance ?? this.warningDistance,
     offRouteDistance: offRouteDistance ?? this.offRouteDistance,
     voiceVolume: voiceVolume ?? this.voiceVolume,
     locationProfile: locationProfile ?? this.locationProfile,
+    locationIntervalMillis: clearLocationInterval
+        ? null
+        : locationIntervalMillis ?? this.locationIntervalMillis,
     diagnosticsMode: diagnosticsMode ?? this.diagnosticsMode,
   );
   Map<String, dynamic> toJson() => {
@@ -349,10 +387,14 @@ class GuidanceSettings {
     'offRouteDistance': offRouteDistance,
     'voiceVolume': voiceVolume,
     'locationProfile': locationProfile.name,
+    'locationIntervalMillis': locationIntervalMillis,
     'diagnosticsMode': diagnosticsMode.name,
   };
   factory GuidanceSettings.fromJson(Map<String, dynamic> json) =>
       GuidanceSettings(
+        locationIntervalMillis: validLocationIntervalMillis(
+          json['locationIntervalMillis'],
+        ),
         locationProfile:
             LocationProfile.values
                 .where((value) => value.name == json['locationProfile'])

@@ -36,6 +36,7 @@ lib/
     formatters.dart      affichage des durées et distances
     running_metrics.dart vitesse et allure live/résumé
     run_tracking_controls.dart profil, traversée et accès aux diagnostics
+    developer_options.dart intervalle personnalisé et export local des logs
     gnss_panel.dart      panneau GNSS à durée de vie limitée
     route_map.dart       carte et couches de parcours
 ```
@@ -59,6 +60,10 @@ Une session porte un mode guidé ou libre. Le mode libre n’a pas de parcours s
 | Autonomie | `high` | 5 s | 5 m |
 
 Un changement de profil dans Réglages concerne la prochaine course; la course en cours conserve son profil épinglé. Les anciennes sessions sans champ profil sont interprétées comme `precise`.
+
+`GuidanceSettings.locationIntervalMillis` est un remplacement facultatif dans **Developer** (250–10 000 ms). Il épingle `RunSession.locationIntervalMillis`, avec filtre de distance 0 m lorsqu'il est actif. Sans ce champ, `requestedLocationIntervalMillis` reprend la cadence du profil. La persistance JSON ne nécessite pas de changement de schéma SQLite et ne réécrit pas les anciennes traces. Les nouvelles sessions portent aussi `locationFilterVersion` ; les anciennes sont déclarées inconnues dans le diagnostic.
+
+L'adaptateur Android distingue la présence des valeurs Geolocator (`hasSpeed`, `hasAccuracy`, etc.) de leurs zéros par défaut. `LocationFix.speedAccuracy` et `headingAccuracy` sont optionnels. Le filtre pondère les mesures rapprochées, contraint la norme de vitesse uniquement avec incertitude exploitable et adapte son mouvement aux courbes et virages confirmés par les positions. Les seuils sont détaillés dans [le comportement GPS](docs/gps-guidance-and-diagnostics.md).
 
 `LocationFix.speed` est nullable : null signifie qu’aucune vitesse exploitable n’a été fournie et ne signifie pas zéro. `SpeedWindow` moyenne les vitesses GPS valides des cinq dernières secondes. Après pause/reprise, la fenêtre est effacée. Une pause affiche la vitesse nulle et une allure `--`; lorsqu’une vitesse n’est pas disponible, les deux mesures restent `--`. Le résumé emploie la distance divisée par la durée active, pauses exclues.
 
@@ -95,3 +100,5 @@ Utilisez des coordonnées synthétiques dans les exemples, logs, captures et rap
 ## Extension 0.4.0+4
 
 Les GPS réels passent par le filtre du domaine avant le contrôleur de distance/navigation ; les simulations restent déterministes. La préparation Overpass utilise un isolate pour construire les indications sans modifier la géométrie. L'origine et la distance ordonnée des indications sont persistées avec Route. NavigationEngine ignore les estimations géométriques pour la voix et l'indication suivante. RunSession épingle le mode diagnostic et stocke les relevés batterie ; les diagnostics GPS sont dans une table séparée, chargés seulement pour export. La suppression de course, points et diagnostics est transactionnelle. Voir [le comportement et les bornes](docs/gps-guidance-and-diagnostics.md).
+
+`RunController.diagnosticDocument` produit le JSON d'une course terminée et `exportDiagnostics` l'ouvre dans le partage natif. `DiagnosticExporter` v2 résume cadence, décisions et batterie et supprime récursivement les coordonnées par défaut ; le choix explicite `includePositions` ajoute les positions d'une course Diagnostic. Les anciennes courses Normal exportent leurs métadonnées et relevés disponibles avec une note d'absence des détails GPS. Aucun comptage GNSS n'est inclus.

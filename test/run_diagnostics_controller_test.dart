@@ -42,7 +42,10 @@ void main() {
       );
       await first.initialize();
       await first.updateSettings(
-        const GuidanceSettings(diagnosticsMode: DiagnosticsMode.diagnostic),
+        const GuidanceSettings(
+          diagnosticsMode: DiagnosticsMode.diagnostic,
+          locationIntervalMillis: 500,
+        ),
       );
       await first.start(simulated: false, mode: RunMode.free);
       final id = first.session!.id;
@@ -61,6 +64,7 @@ void main() {
       expect(recovered.recoverable!.batteryInterrupted, true);
       await recovered.recover();
       expect(recovered.session!.diagnosticsMode, DiagnosticsMode.diagnostic);
+      expect(recovered.session!.requestedLocationIntervalMillis, 500);
       await recovered.finishAfterPending();
       final run = await repo.loadRun(id);
       expect(run.batteryInterrupted, true);
@@ -71,6 +75,9 @@ void main() {
         'finish',
       ]);
       expect(await repo.loadDiagnostics(id), isNotEmpty);
+      final content = await recovered.diagnosticDocument(id);
+      expect(content, contains('"requestedLocationIntervalMillis": 500'));
+      expect(content, isNot(contains('"lat"')));
       await recovered.shutdown();
       recovered.dispose();
     },

@@ -32,6 +32,152 @@ double length(List<LocationFix> points) => [
 ].fold(0, (a, b) => a + b);
 
 void main() {
+  test('unusable speed uncertainty preserves the position-only fallback', () {
+    for (final error in [0.0, -1.0, 2.0, double.nan, double.infinity]) {
+      final reference = LocationFilter(), candidate = LocationFilter();
+      for (var i = 0; i < 30; i++) {
+        final raw = fix(i * 3.0, 2 * math.sin(i.toDouble()), i, accuracy: 3);
+        final expected = feed(reference, raw).fix!;
+        final actual = feed(
+          candidate,
+          LocationFix(
+            point: raw.point,
+            timestamp: raw.timestamp,
+            accuracy: raw.accuracy,
+            speed: raw.speed,
+            speedAccuracy: error,
+          ),
+        ).fix!;
+        expect(distanceBetween(actual.point, expected.point), lessThan(.0001));
+      }
+    }
+  });
+  test(
+    'uncertain low speed does not anchor moving positions as stationary',
+    () {
+      final filter = LocationFilter();
+      for (var i = 0; i < 20; i++) {
+        final raw = fix(i * .7, 0, i, speed: .2);
+        final result = feed(
+          filter,
+          LocationFix(
+            point: raw.point,
+            timestamp: raw.timestamp,
+            accuracy: 5,
+            speed: .2,
+            speedAccuracy: 1,
+          ),
+        );
+        expect(result.reason, isNot('stationary'));
+      }
+    },
+  );
+
+  test(
+    'sustained curved motion is followed without rejecting measured corners',
+    () {
+      for (final millis in [500, 1000]) {
+        final filter = LocationFilter();
+        final points = <LocationFix>[];
+        for (var t = 0; t <= 120000; t += millis) {
+          final angle = t / 1000 * 3 / 30;
+          final raw = LocationFix(
+            point: RoutePoint(
+              30 * math.sin(angle) / earthRadius * 180 / math.pi,
+              30 * math.cos(angle) / earthRadius * 180 / math.pi,
+            ),
+            timestamp: epoch.add(Duration(milliseconds: t)),
+            accuracy: 3,
+            speed: 3,
+            speedAccuracy: .2,
+          );
+          final result = feed(filter, raw);
+          expect(result.fix, isNotNull);
+          points.add(result.fix!);
+          expect(distanceBetween(raw.point, result.fix!.point), lessThan(7));
+        }
+        expect(length(points), closeTo(360, 360 * .05));
+      }
+    },
+  );
+  test(
+    'subsecond correlated fixes remain stable across requested cadences',
+    () {
+      final distances = <double>[];
+      for (final millis in [1000, 500, 250]) {
+        final filter = LocationFilter();
+        final processed = <LocationFix>[];
+        for (var t = 0; t <= 240000; t += millis) {
+          final s = t / 1000;
+          final raw = LocationFix(
+            point: RoutePoint(
+              (3 * math.sin(s * 1.7)) / earthRadius * 180 / math.pi,
+              (s * 3 + 2 * math.sin(s * .8)) / earthRadius * 180 / math.pi,
+            ),
+            timestamp: epoch.add(Duration(milliseconds: t)),
+            accuracy: 5,
+            speed: 3,
+            speedAccuracy: .2,
+          );
+          final result = feed(filter, raw);
+          expect(result.fix, isNotNull);
+          processed.add(result.fix!);
+        }
+        distances.add(length(processed));
+        expect(length(processed), closeTo(720, 720 * .02));
+        expect(processed.last.speedAccuracy, .2);
+      }
+      expect(
+        distances.reduce(math.max) - distances.reduce(math.min),
+        lessThan(10),
+      );
+    },
+  );
+
+  test(
+    'subsecond stationary confirmation is time based and preserves sharp turns',
+    () {
+      for (final millis in [500, 250]) {
+        final filter = LocationFilter();
+        for (var t = 0; t < 2000; t += millis) {
+          final raw = fix(0, 0, 0, speed: 0);
+          final result = feed(
+            filter,
+            LocationFix(
+              point: raw.point,
+              timestamp: epoch.add(Duration(milliseconds: t)),
+              accuracy: 3,
+              speed: 0,
+            ),
+          );
+          expect(result.reason, isNot('stationary'));
+        }
+        expect(feed(filter, fix(0, 0, 2, speed: 0)).reason, 'stationary');
+        filter.reset();
+        for (var t = 0; t <= 60000; t += millis) {
+          final s = t / 1000;
+          final x = s < 20 ? s * 3 : 60.0;
+          final y = s < 20
+              ? 0.0
+              : s < 40
+              ? (s - 20) * 3
+              : (60 - s) * 3;
+          final raw = LocationFix(
+            point: RoutePoint(
+              y / earthRadius * 180 / math.pi,
+              x / earthRadius * 180 / math.pi,
+            ),
+            timestamp: epoch.add(Duration(milliseconds: t)),
+            accuracy: 3,
+            speed: 3,
+          );
+          final filtered = feed(filter, raw);
+          expect(filtered.fix, isNotNull);
+          expect(distanceBetween(raw.point, filtered.fix!.point), lessThan(9));
+        }
+      }
+    },
+  );
   test(
     'weighted Kalman reduces synthetic straight line noise and distance',
     () {

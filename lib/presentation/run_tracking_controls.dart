@@ -4,11 +4,22 @@ import '../domain/models.dart';
 import '../domain/run_diagnostics.dart';
 import 'gnss_panel.dart';
 
-String locationProfileLabel(LocationProfile profile) => switch (profile) {
-  LocationProfile.precise => 'Précision · 1 s / 0 m',
-  LocationProfile.balanced => 'Équilibré · 2 s / 3 m',
-  LocationProfile.autonomy => 'Autonomie · 5 s / 5 m',
-};
+String locationProfileLabel(LocationProfile profile, {int? intervalMillis}) {
+  final interval = validLocationIntervalMillis(intervalMillis);
+  if (interval != null) {
+    final name = switch (profile) {
+      LocationProfile.precise => 'Précision',
+      LocationProfile.balanced => 'Équilibré',
+      LocationProfile.autonomy => 'Autonomie',
+    };
+    return '$name · ${(interval / 1000).toString().replaceAll('.', ',')} s / 0 m (Developer)';
+  }
+  return switch (profile) {
+    LocationProfile.precise => 'Précision · 1 s / 0 m',
+    LocationProfile.balanced => 'Équilibré · 2 s / 3 m',
+    LocationProfile.autonomy => 'Autonomie · 5 s / 5 m',
+  };
+}
 
 class RunTrackingControls extends StatelessWidget {
   const RunTrackingControls({super.key, required this.controller});
@@ -24,7 +35,7 @@ class RunTrackingControls extends StatelessWidget {
           'Mesures batterie : ${(run?.diagnosticsMode ?? c.settings.diagnosticsMode) == DiagnosticsMode.diagnostic ? 'Diagnostic' : 'Normal · début / fin'}',
         ),
         Text(
-          'Profil GPS ${run == null ? 'au prochain départ' : 'de cette course'} : ${locationProfileLabel(run?.locationProfile ?? c.settings.locationProfile)}',
+          'Profil GPS ${run == null ? 'au prochain départ' : 'de cette course'} : ${locationProfileLabel(run?.locationProfile ?? c.settings.locationProfile, intervalMillis: run == null ? c.settings.locationIntervalMillis : run.locationIntervalMillis)}',
         ),
         if (run == null)
           const Text(

@@ -12,6 +12,7 @@ import 'run_tracking_controls.dart';
 import 'battery_summary.dart';
 import 'history_tools.dart';
 import '../domain/run_diagnostics.dart';
+import 'developer_options.dart';
 
 class MapFollowApp extends StatelessWidget {
   const MapFollowApp({super.key, required this.controller});
@@ -631,9 +632,11 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  final _formKey = GlobalKey<FormState>();
   late double _warning, _offset, _volume;
   late domain.LocationProfile _profile;
   late DiagnosticsMode _diagnosticsMode;
+  late int? _locationIntervalMillis;
   @override
   void initState() {
     super.initState();
@@ -643,138 +646,152 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _volume = s.voiceVolume;
     _profile = s.locationProfile;
     _diagnosticsMode = s.diagnosticsMode;
+    _locationIntervalMillis = s.locationIntervalMillis;
   }
 
   @override
   Widget build(BuildContext context) {
     final c = widget.controller;
     final enabled = !c.busy && !c.running;
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        Text(
-          'Un guidage à votre rythme',
-          style: Theme.of(context).textTheme.headlineSmall,
-        ),
-        const SizedBox(height: 20),
-        DropdownButtonFormField<domain.LocationProfile>(
-          initialValue: _profile,
-          decoration: const InputDecoration(
-            labelText: 'Profil GPS de la prochaine course',
-          ),
-          items: [
-            for (final profile in domain.LocationProfile.values)
-              DropdownMenuItem(
-                value: profile,
-                child: Text(locationProfileLabel(profile)),
+    return Form(
+      key: _formKey,
+      child: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Un guidage à votre rythme',
+                style: Theme.of(context).textTheme.headlineSmall,
               ),
-          ],
-          onChanged: !c.busy
-              ? (value) => setState(() => _profile = value!)
-              : null,
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'Appliqué au prochain départ. La course actuelle conserve son profil GPS. Les intervalles sont des demandes au système et peuvent varier selon Android.',
-        ),
-        const SizedBox(height: 20),
-        DropdownButtonFormField<DiagnosticsMode>(
-          initialValue: _diagnosticsMode,
-          decoration: const InputDecoration(
-            labelText: 'Mesures de la prochaine course',
-          ),
-          items: const [
-            DropdownMenuItem(
-              value: DiagnosticsMode.normal,
-              child: Text('Normal · batterie début / fin'),
-            ),
-            DropdownMenuItem(
-              value: DiagnosticsMode.diagnostic,
-              child: Text('Diagnostic · GPS et batterie détaillés'),
-            ),
-          ],
-          onChanged: c.busy
-              ? null
-              : (value) => setState(() => _diagnosticsMode = value!),
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'Le mode Diagnostic conserve localement les positions reçues, les décisions de filtrage et un relevé batterie chaque minute. Aucun comptage GNSS n’est enregistré. Le mode reste épinglé à la course.',
-        ),
-        const SizedBox(height: 20),
-        Text('Prévenir ${_warning.round()} m avant le virage'),
-        Slider(
-          value: _warning,
-          min: 10,
-          max: 200,
-          divisions: 38,
-          label: '${_warning.round()} m',
-          onChanged: enabled ? (v) => setState(() => _warning = v) : null,
-        ),
-        Text('Sortie de parcours : ${_offset.round()} m'),
-        Slider(
-          value: _offset,
-          min: 15,
-          max: 100,
-          divisions: 17,
-          label: '${_offset.round()} m',
-          onChanged: enabled ? (v) => setState(() => _offset = v) : null,
-        ),
-        Text('Volume de la voix : ${(_volume * 100).round()} %'),
-        Slider(
-          value: _volume,
-          min: 0,
-          max: 1,
-          divisions: 10,
-          onChanged: enabled ? (v) => setState(() => _volume = v) : null,
-        ),
-        FilledButton(
-          onPressed: !c.busy
-              ? () => c.perform(
-                  () => c.updateSettings(
-                    c.running
-                        ? c.settings.copyWith(
-                            locationProfile: _profile,
-                            diagnosticsMode: _diagnosticsMode,
-                          )
-                        : c.settings.copyWith(
-                            warningDistance: _warning,
-                            offRouteDistance: _offset,
-                            voiceVolume: _volume,
-                            locationProfile: _profile,
-                            diagnosticsMode: _diagnosticsMode,
-                          ),
+              const SizedBox(height: 20),
+              DropdownButtonFormField<domain.LocationProfile>(
+                initialValue: _profile,
+                decoration: const InputDecoration(
+                  labelText: 'Profil GPS de la prochaine course',
+                ),
+                items: [
+                  for (final profile in domain.LocationProfile.values)
+                    DropdownMenuItem(
+                      value: profile,
+                      child: Text(locationProfileLabel(profile)),
+                    ),
+                ],
+                onChanged: !c.busy
+                    ? (value) => setState(() => _profile = value!)
+                    : null,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Appliqué au prochain départ. La course actuelle conserve son profil GPS. Les intervalles sont des demandes au système et peuvent varier selon Android.',
+              ),
+              const SizedBox(height: 20),
+              DeveloperOptions(
+                intervalMillis: _locationIntervalMillis,
+                onIntervalChanged: (value) => _locationIntervalMillis = value,
+                diagnosticsMode: _diagnosticsMode,
+                onDiagnosticsModeChanged: (value) =>
+                    setState(() => _diagnosticsMode = value),
+                runs: c.history,
+                busy: c.busy,
+                onExport: (id, includePositions) => c.perform(
+                  () => c.exportDiagnostics(
+                    id,
+                    includePositions: includePositions,
                   ),
-                )
-              : null,
-          child: Text(
-            c.running
-                ? 'Enregistrer le profil de la prochaine course'
-                : 'Enregistrer les réglages',
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text('Prévenir ${_warning.round()} m avant le virage'),
+              Slider(
+                value: _warning,
+                min: 10,
+                max: 200,
+                divisions: 38,
+                label: '${_warning.round()} m',
+                onChanged: enabled ? (v) => setState(() => _warning = v) : null,
+              ),
+              Text('Sortie de parcours : ${_offset.round()} m'),
+              Slider(
+                value: _offset,
+                min: 15,
+                max: 100,
+                divisions: 17,
+                label: '${_offset.round()} m',
+                onChanged: enabled ? (v) => setState(() => _offset = v) : null,
+              ),
+              Text('Volume de la voix : ${(_volume * 100).round()} %'),
+              Slider(
+                value: _volume,
+                min: 0,
+                max: 1,
+                divisions: 10,
+                onChanged: enabled ? (v) => setState(() => _volume = v) : null,
+              ),
+              FilledButton(
+                onPressed: !c.busy
+                    ? () {
+                        if (!(_formKey.currentState?.validate() ?? false)) {
+                          return;
+                        }
+                        c.perform(
+                          () => c.updateSettings(
+                            c.running
+                                ? c.settings.copyWith(
+                                    locationProfile: _profile,
+                                    diagnosticsMode: _diagnosticsMode,
+                                    locationIntervalMillis:
+                                        _locationIntervalMillis,
+                                    clearLocationInterval:
+                                        _locationIntervalMillis == null,
+                                  )
+                                : c.settings.copyWith(
+                                    warningDistance: _warning,
+                                    offRouteDistance: _offset,
+                                    voiceVolume: _volume,
+                                    locationProfile: _profile,
+                                    diagnosticsMode: _diagnosticsMode,
+                                    locationIntervalMillis:
+                                        _locationIntervalMillis,
+                                    clearLocationInterval:
+                                        _locationIntervalMillis == null,
+                                  ),
+                          ),
+                        );
+                      }
+                    : null,
+                child: Text(
+                  c.running
+                      ? 'Enregistrer le profil de la prochaine course'
+                      : 'Enregistrer les réglages',
+                ),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: enabled ? () => c.perform(c.testVoice) : null,
+                icon: const Icon(Icons.volume_up_outlined),
+                label: const Text('Tester la voix enregistrée'),
+              ),
+              const SizedBox(height: 20),
+              const _Notice(
+                'Le guidage nécessite une voix française hors connexion. Le Run libre peut enregistrer sans voix. La musique peut baisser pendant les annonces ; certains lecteurs de podcasts se mettent en pause.',
+              ),
+              const SizedBox(height: 12),
+              const _Notice(
+                'La carte nécessite Internet. Le GPS et les annonces restent actifs sans réseau pendant la session. Aucune localisation n’est envoyée à un serveur de suivi.',
+              ),
+              if (c.running)
+                const Padding(
+                  padding: EdgeInsets.only(top: 12),
+                  child: Text(
+                    'Mettez la course en pause pour modifier les seuils et la voix. Le profil GPS choisi s’applique à la prochaine course.',
+                  ),
+                ),
+            ],
           ),
-        ),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          onPressed: enabled ? () => c.perform(c.testVoice) : null,
-          icon: const Icon(Icons.volume_up_outlined),
-          label: const Text('Tester la voix enregistrée'),
-        ),
-        const SizedBox(height: 20),
-        const _Notice(
-          'Le guidage nécessite une voix française hors connexion. Le Run libre peut enregistrer sans voix. La musique peut baisser pendant les annonces ; certains lecteurs de podcasts se mettent en pause.',
-        ),
-        const SizedBox(height: 12),
-        const _Notice(
-          'La carte nécessite Internet. Le GPS et les annonces restent actifs sans réseau pendant la session. Aucune localisation n’est envoyée à un serveur de suivi.',
-        ),
-        if (c.running)
-          const Padding(
-            padding: EdgeInsets.only(top: 12),
-            child: Text(
-              'Mettez la course en pause pour modifier les seuils et la voix. Le profil GPS choisi s’applique à la prochaine course.',
-            ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }
