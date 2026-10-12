@@ -13,12 +13,14 @@ class FilteredLocation {
 
 /// Filtre local 2D à vitesse constante : position et vitesse avec covariance
 /// complète. La vitesse GNSS scalaire borne les mouvements aberrants et peut
-/// contraindre la norme de vitesse lorsqu'une incertitude exploitable existe ;
-/// la direction vient exclusivement des positions.
+/// contraindre la norme de vitesse lorsqu'une incertitude exploitable existe.
+/// La sortie est régularisée quand la mesure de vitesse permet de distinguer
+/// déplacement cohérent et bruit important ; les directions viennent des
+/// positions, jamais de l'orientation du téléphone.
 /// Aucun point n'est émis sans mesure reçue. La précision Android pondère la
 /// mesure ; le résultat n'est ni une garantie de précision ni un recalage OSM.
 class LocationFilter {
-  static const version = 'kalman-cadence-2';
+  static const version = 'kalman-passive-3';
   static const gap = Duration(seconds: 10);
   RoutePoint? _origin;
   LocationFix? _previousRaw;
@@ -31,6 +33,7 @@ class LocationFilter {
   DateTime? _reactiveUntil;
   DateTime? _curvingUntil, _lateralSince;
   final List<LocationFix> _motionWindow = [];
+  var _regularizationActive = false;
 
   void reset() {
     _origin = null;
@@ -45,6 +48,7 @@ class LocationFilter {
     _curvingUntil = null;
     _lateralSince = null;
     _motionWindow.clear();
+    _regularizationActive = false;
   }
 
   FilteredLocation process(LocationFix raw, {required DateTime now}) {
@@ -53,11 +57,12 @@ class LocationFilter {
     final invalid = LocationQuality.rejectionReason(raw, now: now);
     if (invalid != null) return FilteredLocation(null, invalid);
     final previous = _previousRaw;
-    if (previous != null && !raw.timestamp.isAfter(previous.timestamp)) {
+    if (previous != null &&
+        (!raw.timestamp.isAfter(previous.timestamp) ||
+            raw.intervalSince(previous) <= Duration.zero)) {
       return const FilteredLocation(null, 'non_monotonic');
     }
-    final newSegment =
-        previous != null && raw.timestamp.difference(previous.timestamp) > gap;
+    final newSegment = previous != null && raw.intervalSince(previous) > gap;
     if (!newSegment) {
       final rejected = LocationQuality.rejectionReason(
         raw,
@@ -70,8 +75,7 @@ class LocationFilter {
       if (previous != null &&
           _validSpeed(previousSpeed) &&
           _validSpeed(speed)) {
-        final seconds =
-            raw.timestamp.difference(previous.timestamp).inMilliseconds / 1000;
+        final seconds = raw.intervalSince(previous).inMicroseconds / 1e6;
         // La vitesse GNSS scalaire est indépendante du cap du téléphone.
         // Autoriser 2 m/s² d'accélération et au plus 12 m d'incertitude évite
         // qu'une précision annoncée trop optimiste masque un saut important.
@@ -98,8 +102,7 @@ class LocationFilter {
         (raw.point.latitude - origin.latitude) * math.pi / 180 * earthRadius;
     final dt = _previousRaw == null
         ? 0.0
-        : raw.timestamp.difference(_previousRaw!.timestamp).inMilliseconds /
-              1000;
+        : raw.intervalSince(_previousRaw!).inMicroseconds / 1e6;
     // Les mesures rapprochées partagent du bruit : deux mesures en une seconde
     // ne valent pas deux observations indépendantes. Conserver une information
     // par seconde et un bruit de mouvement par seconde, même à 250/500 ms.
@@ -254,8 +257,10 @@ class LocationFilter {
     }
 
     _state ??= _Kalman2D(x, y, variance);
+    var measurementGain = 1.0;
     if (dt > 0) {
       _state!.predict(dt, accelerationVariance * cadenceWeight);
+      measurementGain = _state!.positionMeasurementGain(variance);
       _state!.observe(x, const [1, 0, 0, 0], variance);
       _state!.observe(y, const [0, 0, 1, 0], variance);
       // Une vitesse GNSS avec incertitude mesurée apporte une contrainte de
@@ -285,6 +290,19 @@ class LocationFilter {
       time: raw.point.time,
       traversal: raw.point.traversal,
     );
+    if (_lastPoint != null &&
+        dt > 0 &&
+        (reliableSpeed || _regularizationActive)) {
+      point = _regularizeOutput(
+        raw,
+        point,
+        x: x,
+        y: y,
+        dt: dt,
+        scale: scale,
+        measurementGain: measurementGain,
+      );
+    }
     final stationary =
         _stationaryCount >= 3 &&
         _stationarySince != null &&
@@ -314,12 +332,12 @@ class LocationFilter {
     }
     _previousRaw = raw;
     _motionWindow.add(raw);
-    while (_motionWindow.length > 32 ||
+    while (_motionWindow.length > 64 ||
         (_motionWindow.length > 1 &&
             raw.timestamp
                     .difference(_motionWindow.first.timestamp)
                     .inMilliseconds >
-                4000)) {
+                8000)) {
       _motionWindow.removeAt(0);
     }
     _previousInnovation = stationary ? null : innovation;
@@ -333,6 +351,9 @@ class LocationFilter {
         heading: raw.heading,
         speedAccuracy: raw.speedAccuracy,
         headingAccuracy: raw.headingAccuracy,
+        elapsedRealtimeNanos: raw.elapsedRealtimeNanos,
+        receivedElapsedRealtimeNanos: raw.receivedElapsedRealtimeNanos,
+        locationStreamId: raw.locationStreamId,
       ),
       stationary ? 'stationary' : 'filtered',
       newSegment: newSegment,
@@ -341,6 +362,112 @@ class LocationFilter {
 
   static bool _validSpeed(double? speed) =>
       speed != null && speed.isFinite && speed >= 0 && speed <= 12;
+
+  static bool _usableMotionMeasurement(LocationFix fix) {
+    final uncertainty = fix.speedAccuracy;
+    return _validSpeed(fix.speed) &&
+        uncertainty != null &&
+        uncertainty.isFinite &&
+        uncertainty > 0 &&
+        uncertainty <= 1;
+  }
+
+  RoutePoint _regularizeOutput(
+    LocationFix raw,
+    RoutePoint candidate, {
+    required double x,
+    required double y,
+    required double dt,
+    required double scale,
+    required double measurementGain,
+  }) {
+    // Comparer sur plusieurs secondes, pas sur une arête à cadence GPS : le
+    // bruit de position peut être beaucoup plus grand que le mouvement reçu.
+    final window = [..._motionWindow, raw];
+    var rawDistance = 0.0, speedDistance = 0.0;
+    var seconds = 0.0, uncertainty = 0.0;
+    for (var i = window.length - 1; i >= 1; i--) {
+      final a = window[i - 1], b = window[i];
+      if (!_usableMotionMeasurement(a) || !_usableMotionMeasurement(b)) {
+        // La cohérence doit porter sur des paires récentes et contiguës : ne
+        // pas réutiliser une vitesse ancienne à travers un champ manquant.
+        break;
+      }
+      final span = b.timestamp.difference(a.timestamp).inMicroseconds / 1e6;
+      rawDistance += distanceBetween(a.point, b.point);
+      speedDistance += (a.speed! + b.speed!) * .5 * span;
+      seconds += span;
+      uncertainty += (a.speedAccuracy! + b.speedAccuracy!) * .5 * span;
+    }
+    final motionObserved = seconds >= 2;
+    if (!motionObserved && !_regularizationActive) return candidate;
+    _regularizationActive = true;
+    final mismatch = motionObserved
+        ? (rawDistance - speedDistance).abs() / seconds
+        : 0.0;
+    final allowance = motionObserved
+        ? math.max(.15, uncertainty / seconds)
+        : .15;
+    final trust = motionObserved
+        ? (2 - mismatch / allowance).clamp(0.0, 1.0)
+        : 0.0;
+    final origin = _origin!, last = _lastPoint!;
+    final px =
+        angleDifference(origin.longitude, last.longitude) *
+        math.pi /
+        180 *
+        earthRadius *
+        scale;
+    final py = (last.latitude - origin.latitude) * math.pi / 180 * earthRadius;
+    final dx = x - px, dy = y - py;
+    final squared = dx * dx + dy * dy;
+    // Le point le plus proche de l'estimation Kalman sur le segment entre la
+    // dernière sortie et la mesure. Cette branche n'extrapole pas au-delà de
+    // la mesure et ne renormalise pas une distance au compteur Garmin.
+    final projectedGain = squared < .000001
+        ? 0.0
+        : (((_state!.values[0] - px) * dx + (_state!.values[2] - py) * dy) /
+                  squared)
+              .clamp(0.0, 1.0);
+    var gain =
+        trust * projectedGain + (1 - trust) * measurementGain.clamp(.02, 1.0);
+    // Éviter un retard arbitrairement grand lorsque le gain est faible ; le
+    // budget spatial dépend de l'incertitude et du mouvement, pas du parcours.
+    final remaining = math.sqrt(squared);
+    final motionSpeed = _validSpeed(raw.speed)
+        ? raw.speed!
+        : math
+              .sqrt(
+                _state!.values[1] * _state!.values[1] +
+                    _state!.values[3] * _state!.values[3],
+              )
+              .clamp(0.0, 12.0);
+    final lagBudget = math.max(2 * raw.accuracy, 2 * motionSpeed);
+    if (remaining > lagBudget) {
+      gain = math.max(gain, 1 - lagBudget / remaining);
+    }
+    final sx = px + gain * dx, sy = py + gain * dy;
+    // Un bruit très supérieur à l'incertitude de vitesse conserve le filtrage
+    // Kalman existant, avec un léger lissage temporel supplémentaire. Le score
+    // 3–4 est heuristique, pas une probabilité ni un test d'indépendance GPS.
+    final noisyWeight = motionObserved
+        ? (mismatch / allowance - 3).clamp(0.0, 1.0)
+        : 0.0;
+    final noiseGain = 1 - math.exp(-dt / .5);
+    final nx = px + noiseGain * (_state!.values[0] - px);
+    final ny = py + noiseGain * (_state!.values[2] - py);
+    final fx = (1 - noisyWeight) * sx + noisyWeight * nx;
+    final fy = (1 - noisyWeight) * sy + noisyWeight * ny;
+    return RoutePoint(
+      origin.latitude + fy / earthRadius * 180 / math.pi,
+      (origin.longitude + fx / (earthRadius * scale) * 180 / math.pi + 540) %
+              360 -
+          180,
+      elevation: raw.point.elevation,
+      time: raw.point.time,
+      traversal: raw.point.traversal,
+    );
+  }
 
   bool _continuesCurve(LocationFix raw) {
     if (_motionWindow.length < 2) return false;
@@ -392,6 +519,17 @@ class _Kalman2D {
       );
   final List<double> values;
   List<List<double>> covariance;
+
+  /// Trace moyenne du gain de position conjoint, avant les deux observations
+  /// cartésiennes : le choix d'axe ne doit pas modifier le lissage de sortie.
+  double positionMeasurementGain(double variance) {
+    final a = covariance[0][0], b = covariance[0][2];
+    final c = covariance[2][2];
+    final divisor = (a + variance) * (c + variance) - b * b;
+    return ((a * (c + variance) + c * (a + variance) - 2 * b * b) /
+            (2 * divisor))
+        .clamp(0.0, 1.0);
+  }
 
   double predictedPosition(int i, double dt) => values[i] + dt * values[i + 1];
   double predictedVariance(int i, double dt, double acceleration) =>

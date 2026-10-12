@@ -1,7 +1,7 @@
 name: mapfollow
 description: Guidage vocal et suivi local de parcours de trail.
 publish_to: none
-version: 0.5.0+5
+version: 0.5.2+7
 environment:
   sdk: '>=3.10.0 <4.0.0'
 dependencies:
@@ -24,6 +24,9 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
   sqflite_common_ffi: ^2.4.3
+dependency_overrides:
+  geolocator_android:
+    path: packages/geolocator_android
 flutter:
   uses-material-design: true
   assets:

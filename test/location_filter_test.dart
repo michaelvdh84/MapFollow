@@ -32,6 +32,195 @@ double length(List<LocationFix> points) => [
 ].fold(0, (a, b) => a + b);
 
 void main() {
+  test(
+    'filter uses native intervals, carries clocks and rejects reordered fixes before state changes',
+    () {
+      final filter = LocationFilter();
+      LocationFix native(int nanos, int utcSeconds) => LocationFix(
+        point: RoutePoint(0, nanos / 1e9 * 2 / earthRadius * 180 / math.pi),
+        timestamp: epoch.add(Duration(seconds: utcSeconds)),
+        accuracy: 3,
+        elapsedRealtimeNanos: nanos,
+        receivedElapsedRealtimeNanos: nanos + 100000000,
+        locationStreamId: 'synthetic-live-stream',
+      );
+      expect(feed(filter, native(1000000000, 0)).fix, isNotNull);
+      final second = feed(filter, native(1500000000, 20));
+      expect(second.fix, isNotNull);
+      expect(second.newSegment, false);
+      expect(second.fix!.elapsedRealtimeNanos, 1500000000);
+      expect(second.fix!.locationStreamId, 'synthetic-live-stream');
+      expect(feed(filter, native(1400000000, 21)).reason, 'non_monotonic');
+      expect(feed(filter, native(2000000000, 22)).fix, isNotNull);
+      final afterGap = feed(filter, native(13000000000, 23));
+      expect(afterGap.newSegment, true);
+    },
+  );
+  test(
+    'missing motion fields do not switch a regularized trace back to CV',
+    () {
+      for (final missing in [null, 0.0, -1.0, 2.0, double.nan]) {
+        final filter = LocationFilter();
+        LocationFix? previous;
+        final points = <LocationFix>[];
+        for (var millis = 0; millis <= 120000; millis += 500) {
+          final angle = millis / 1000 * 2.5 / 30;
+          final raw = LocationFix(
+            point: RoutePoint(
+              30 * math.sin(angle) / earthRadius * 180 / math.pi,
+              30 * math.cos(angle) / earthRadius * 180 / math.pi,
+            ),
+            timestamp: epoch.add(Duration(milliseconds: millis)),
+            accuracy: 6,
+            speed: millis >= 60000 && millis < 62000 ? null : 2.5,
+            speedAccuracy: millis >= 60000 && millis < 70000 ? missing : .27,
+          );
+          final fix = feed(filter, raw).fix!;
+          if (previous != null && millis >= 59000 && millis <= 74000) {
+            // With coherent positions (no noisy branch), every output remains
+            // between the previous output and the latest measured point.
+            expect(
+              distanceBetween(previous.point, fix.point) +
+                  distanceBetween(fix.point, raw.point),
+              lessThanOrEqualTo(
+                distanceBetween(previous.point, raw.point) + .001,
+              ),
+            );
+          }
+          previous = fix;
+          points.add(fix);
+        }
+        expect(length(points), closeTo(300, 6));
+      }
+    },
+  );
+  test('crossing the low-speed boundary does not create a position jump', () {
+    final filter = LocationFilter();
+    LocationFix? previous;
+    for (var millis = 0; millis <= 60000; millis += 500) {
+      final raw = LocationFix(
+        point: RoutePoint(0, millis / 1000 * .5 / earthRadius * 180 / math.pi),
+        timestamp: epoch.add(Duration(milliseconds: millis)),
+        accuracy: 6,
+        speed: millis % 1000 == 0 ? .51 : .49,
+        speedAccuracy: .1,
+      );
+      final fix = feed(filter, raw).fix!;
+      if (previous != null) {
+        expect(distanceBetween(previous.point, fix.point), lessThan(.6));
+      }
+      previous = fix;
+    }
+  });
+  test('low-accuracy curves and corners do not amplify measured distance', () {
+    for (final shape in ['circle', 'rectangle']) {
+      for (final accuracy in [3.0, 6.0]) {
+        for (final interval in [250, 500, 673, 1000]) {
+          final filter = LocationFilter();
+          final processed = <LocationFix>[];
+          for (var millis = 0; millis <= 240000; millis += interval) {
+            final travel = millis / 1000 * 2.5;
+            double x, y;
+            if (shape == 'circle') {
+              x = 30 * math.sin(travel / 30);
+              y = 30 * math.cos(travel / 30);
+            } else {
+              final s = travel % 240;
+              if (s < 60) {
+                x = s;
+                y = 0;
+              } else if (s < 120) {
+                x = 60;
+                y = s - 60;
+              } else if (s < 180) {
+                x = 180 - s;
+                y = 60;
+              } else {
+                x = 0;
+                y = 240 - s;
+              }
+            }
+            final raw = LocationFix(
+              point: RoutePoint(
+                y / earthRadius * 180 / math.pi,
+                x / earthRadius * 180 / math.pi,
+              ),
+              timestamp: epoch.add(Duration(milliseconds: millis)),
+              accuracy: accuracy,
+              speed: 2.5,
+              speedAccuracy: .27,
+              heading: millis % 360.0,
+            );
+            final result = feed(filter, raw);
+            expect(result.fix, isNotNull);
+            processed.add(result.fix!);
+            expect(distanceBetween(raw.point, result.fix!.point), lessThan(7));
+          }
+          final reference =
+              processed.last.timestamp.difference(epoch).inMilliseconds /
+              1000 *
+              2.5;
+          expect(
+            length(processed),
+            closeTo(reference, reference * .02),
+            reason: '$shape / $accuracy m / $interval ms',
+          );
+        }
+      }
+    }
+  });
+  test('slow correlated bias does not gain distance through prediction', () {
+    final filter = LocationFilter();
+    final rawPoints = <LocationFix>[], processed = <LocationFix>[];
+    for (var millis = 0; millis <= 240000; millis += 673) {
+      final t = millis / 1000;
+      final raw = LocationFix(
+        point: RoutePoint(
+          6 * math.sin(t * 2 * math.pi / 30) / earthRadius * 180 / math.pi,
+          (t * 2.5 + 6 * math.sin(t * 2 * math.pi / 60)) /
+              earthRadius *
+              180 /
+              math.pi,
+        ),
+        timestamp: epoch.add(Duration(milliseconds: millis)),
+        accuracy: 6,
+        speed: 2.5,
+        speedAccuracy: .27,
+      );
+      rawPoints.add(raw);
+      final result = feed(filter, raw);
+      expect(result.fix, isNotNull);
+      processed.add(result.fix!);
+      final truth = RoutePoint(0, t * 2.5 / earthRadius * 180 / math.pi);
+      expect(distanceBetween(truth, result.fix!.point), lessThan(12));
+    }
+    // This bias already inflates the raw trace; do not promise a 2% absolute
+    // bound for an ambiguous signal. The filter must not amplify that bias.
+    expect(length(processed), lessThan(length(rawPoints)));
+  });
+  test('regularization is invariant to axes and ignores device heading', () {
+    final horizontal = LocationFilter(), rotated = LocationFilter();
+    for (var millis = 0; millis <= 120000; millis += 673) {
+      final a = millis / 1000 * 2.5 / 30;
+      final x = 30 * math.sin(a), y = 30 * math.cos(a);
+      LocationFix measurement(double px, double py, double heading) =>
+          LocationFix(
+            point: RoutePoint(
+              py / earthRadius * 180 / math.pi,
+              px / earthRadius * 180 / math.pi,
+            ),
+            timestamp: epoch.add(Duration(milliseconds: millis)),
+            accuracy: 6,
+            speed: 2.5,
+            speedAccuracy: .27,
+            heading: heading,
+          );
+      final left = feed(horizontal, measurement(x, y, 0)).fix!;
+      final right = feed(rotated, measurement(-y, x, millis % 360.0)).fix!;
+      final expected = RoutePoint(left.point.longitude, -left.point.latitude);
+      expect(distanceBetween(expected, right.point), lessThan(.001));
+    }
+  });
   test('unusable speed uncertainty preserves the position-only fallback', () {
     for (final error in [0.0, -1.0, 2.0, double.nan, double.infinity]) {
       final reference = LocationFilter(), candidate = LocationFilter();

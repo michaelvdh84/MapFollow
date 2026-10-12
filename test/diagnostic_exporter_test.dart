@@ -7,6 +7,56 @@ import 'package:mapfollow/domain/run_diagnostics.dart';
 
 void main() {
   final now = DateTime.utc(2026);
+  test(
+    'native cadence groups live streams without crossing a reboot and exports no coordinates',
+    () {
+      final run = RunSession(
+        id: 'synthetic-clock',
+        startedAt: now,
+        simulated: false,
+        diagnosticsMode: DiagnosticsMode.diagnostic,
+      );
+      final data =
+          jsonDecode(
+                DiagnosticExporter().export(
+                  run,
+                  diagnostics: [
+                    for (final (stream, measured) in [
+                      ('first', 90000000000),
+                      ('first', 90500000000),
+                      ('after-reboot', 1000000000),
+                      ('after-reboot', 1500000000),
+                    ])
+                      {
+                        'event': 'location',
+                        'raw': {
+                          'locationStreamId': stream,
+                          'elapsedRealtimeNanos': measured,
+                          'receivedElapsedRealtimeNanos': measured + 100000000,
+                          'point': {'lat': 0.0, 'lon': 0.0},
+                        },
+                      },
+                  ],
+                ),
+              )
+              as Map;
+      final summary = data['summary'];
+      expect(summary['monotonicMeasurementCadenceSeconds']['count'], 2);
+      expect(summary['monotonicMeasurementCadenceSeconds']['median'], .5);
+      expect(
+        summary['monotonicMeasurementCadenceSeconds']['nonMonotonicCount'],
+        0,
+      );
+      expect(summary['nativeDeliveryAgeMillis']['median'], 100);
+      expect(data['positionsIncluded'], false);
+      expect(
+        (data['diagnostics'] as List).every(
+          (event) => !event['raw'].containsKey('point'),
+        ),
+        true,
+      );
+    },
+  );
   RunSession session(DiagnosticsMode mode) => RunSession(
     id: 'synthetic-run',
     startedAt: now,
@@ -36,6 +86,39 @@ void main() {
       ],
     },
   ];
+
+  test(
+    'export distinguishes initial and observed filter versions after recovery',
+    () {
+      final run = RunSession(
+        id: 'synthetic-upgrade',
+        startedAt: now,
+        simulated: false,
+        diagnosticsMode: DiagnosticsMode.diagnostic,
+        locationFilterVersion: 'kalman-cadence-2',
+      );
+      final data =
+          jsonDecode(
+                DiagnosticExporter().export(
+                  run,
+                  diagnostics: [
+                    {'event': 'location', 'decision': 'filtered'},
+                    {
+                      'event': 'location',
+                      'decision': 'filtered',
+                      'filterVersion': 'kalman-passive-3',
+                    },
+                  ],
+                ),
+              )
+              as Map;
+      expect(data['summary']['locationFilterVersion'], 'kalman-cadence-2');
+      expect(data['summary']['observedFilterVersions'], {
+        'kalman-cadence-2': 1,
+        'kalman-passive-3': 1,
+      });
+    },
+  );
 
   test('normal export contains battery metadata and no position payload', () {
     final json =

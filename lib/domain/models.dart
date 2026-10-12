@@ -198,6 +198,9 @@ class LocationFix {
     this.heading,
     this.speedAccuracy,
     this.headingAccuracy,
+    this.elapsedRealtimeNanos,
+    this.receivedElapsedRealtimeNanos,
+    this.locationStreamId,
   });
   final RoutePoint point;
   final DateTime timestamp;
@@ -208,6 +211,24 @@ class LocationFix {
   final double? heading;
   final double? speedAccuracy;
   final double? headingAccuracy;
+
+  /// Android clock since boot, optional for legacy fixes and simulations.
+  /// Only live fixes from the same subscription may be compared.
+  final int? elapsedRealtimeNanos;
+  final int? receivedElapsedRealtimeNanos;
+  final String? locationStreamId;
+
+  /// Monotonic intervals are only comparable within the same live stream.
+  Duration intervalSince(LocationFix previous) =>
+      locationStreamId != null &&
+          locationStreamId == previous.locationStreamId &&
+          elapsedRealtimeNanos != null &&
+          previous.elapsedRealtimeNanos != null
+      ? Duration(
+          microseconds:
+              (elapsedRealtimeNanos! - previous.elapsedRealtimeNanos!) ~/ 1000,
+        )
+      : timestamp.difference(previous.timestamp);
   Map<String, dynamic> toJson() => {
     'point': point.toJson(),
     'timestamp': timestamp.toUtc().toIso8601String(),
@@ -216,6 +237,9 @@ class LocationFix {
     'heading': heading,
     'speedAccuracy': speedAccuracy,
     'headingAccuracy': headingAccuracy,
+    'elapsedRealtimeNanos': elapsedRealtimeNanos,
+    'receivedElapsedRealtimeNanos': receivedElapsedRealtimeNanos,
+    'locationStreamId': locationStreamId,
   };
   factory LocationFix.fromJson(Map<String, dynamic> json) => LocationFix(
     point: RoutePoint.fromJson(Map<String, dynamic>.from(json['point'] as Map)),
@@ -225,6 +249,10 @@ class LocationFix {
     heading: (json['heading'] as num?)?.toDouble(),
     speedAccuracy: (json['speedAccuracy'] as num?)?.toDouble(),
     headingAccuracy: (json['headingAccuracy'] as num?)?.toDouble(),
+    elapsedRealtimeNanos: (json['elapsedRealtimeNanos'] as num?)?.toInt(),
+    receivedElapsedRealtimeNanos: (json['receivedElapsedRealtimeNanos'] as num?)
+        ?.toInt(),
+    locationStreamId: json['locationStreamId'] as String?,
   );
 }
 

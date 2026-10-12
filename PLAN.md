@@ -2,13 +2,15 @@
 
 ## État actuel
 
-Le code courant porte la version `0.5.0+5`. Il ajoute **Developer**, l'intervalle GPS personnalisé (dont 0,5 s), l'export de logs sans coordonnées par défaut et un filtre adapté aux cadences rapprochées, aux courbes et à la vitesse GNSS disponible. Voir [le comportement détaillé](docs/gps-guidance-and-diagnostics.md) et [le journal de vérification](docs/verification.md). La dernière sortie utilisateur donne +2,91 % sur la période commune face aux 7,02 km affichés par Garmin ; la nouvelle cible ≤2 % nécessite une sortie avec `0.5.0+5`. Les vérifications `0.4.0+4` et antérieures restent historiques.
+Le code courant porte la version `0.5.2+7`. Il conserve **Developer**, l'intervalle GPS personnalisé et les exports. L'[audit Android](docs/android-location-audit.md) complète l'acquisition : première position Fused fraîche, paramètres explicites, livraison de tous les points d'un callback et horodatages monotones disponibles pour qualité/intervalles/diagnostics. Une copie locale MIT du plugin conserve le service existant et les fournisseurs. Aucun gain terrain n'est déduit de ces changements.
 
-Pour le prochain essai : Précision, Developer à 0,5 s, mode Diagnostic avant départ, mêmes instants de départ et arrêt que Garmin. Exporter GPX et logs explicitement après la course ; les coordonnées des logs restent décochées par défaut. La baisse de 4 points de batterie déclarée pour la dernière sortie inclut YouTube Music et Bluetooth.
+La correction du filtre de `0.5.1+6` reste présente : le rejeu de la [sortie S21 du 12 octobre](docs/comparison-s21-2026-10-12.md) donne **5 015,8 m sur la période commune**, soit **−0,28 %** face aux 5,03 km affichés par Garmin, contre +3,54 % auparavant. Ce résultat de rejeu ne valide pas encore une nouvelle sortie réelle. L'écran POC lit la version et le build du paquet Android installé. Voir [le comportement détaillé](docs/gps-guidance-and-diagnostics.md) et [le journal de vérification](docs/verification.md).
+
+Prochaine étape : terminer les contrôles physiques de la version affichée sur les deux téléphones, puis refaire une sortie avec Précision, Developer à 0,5 s, mode Diagnostic avant départ et mêmes instants de départ/arrêt que Garmin. Exporter GPX et logs explicitement après la course ; les coordonnées des logs restent décochées par défaut. La sortie S21 antérieure mesure une baisse de 5 points de batterie du téléphone entier ; les applications audio utilisées sur cette sortie n'ont pas été précisées. Les dérives lentes peuvent encore dépasser 2 % dans certains scénarios synthétiques.
 
 | Domaine | Comportement disponible | Vérification connue |
 |---|---|---|
-| Application | Flutter, interface française; onglets Parcours, Course, Historique, Réglages | Analyse, 157 tests, formatage et build `0.5.0+5` ; installation et démarrage S23/S21 réussis ; détails dans le journal |
+| Application | Flutter, interface française; onglets Parcours, Course, Historique, Réglages ; version POC issue du paquet | Analyse, 169 tests Flutter et 16 Java, formatage et build `0.5.2+7` ; APK final installé sur S23, détails et limites dans le journal |
 | Cartographie | `flutter_map`, tuiles OpenStreetMap en ligne avec attribution | Essai physique en attente |
 | Import | XML GPX, TCX, PWX; limites 10 MiB et 100 000 points; les ruptures invalides restent des segments distincts | Couvert par la suite de 157 tests de `0.5.0+5`; aucun essai de partage réel |
 | Navigation | Progression vers l’avant, qualité GPS, détection d’écart et rappels configurables | Suite automatisée `0.5.0+5` réussie; essais GPS et voix réels à faire |
@@ -34,7 +36,7 @@ Pour le prochain essai : Précision, Developer à 0,5 s, mode Diagnostic avant d
 
 1. Compléter [la fiche terrain](docs/field-validation.md) après l'installation et les contrôles ADB partiels réussis sur Samsung S23 Ultra et S21 5G.
 2. Vérifier permissions et suivi écran verrouillé, interruption audio, partage GPX, reprise, Bluetooth et réglages de batterie Samsung.
-3. Comparer une nouvelle sortie Garmin avec Précision, Developer à 0,5 s et Diagnostic ; viser ≤2 % sur la période comparable et noter la distance du compteur Garmin séparément de la longueur de son GPX.
+3. Comparer une nouvelle sortie Garmin avec `0.5.2+7`, Précision, Developer à 0,5 s et Diagnostic ; viser ≤2 % sur la période comparable et noter la distance du compteur Garmin séparément de la longueur de son GPX. Faire ensuite un essai comparable à 1 s ; compléter cadence monotone et âge de livraison natif.
 4. Évaluer iOS seulement après le jalon Android; le squelette iOS généré ne signifie pas qu’iOS fonctionne.
 
 ## Hors périmètre v1

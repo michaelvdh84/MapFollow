@@ -74,31 +74,39 @@ class DeviceLocationSource implements LocationSource {
       speed.isFinite && speed >= 0 ? speed : null;
 
   /// Les zéros du plugin sans indicateur de présence ne sont pas des mesures.
-  static LocationFix normalizePosition(Position position) => LocationFix(
-    point: RoutePoint(
-      position.latitude,
-      position.longitude,
-      elevation: position.hasAltitude && position.altitude.isFinite
-          ? position.altitude
-          : null,
-    ),
-    timestamp: position.timestamp,
-    accuracy: position.hasAccuracy ? position.accuracy : double.nan,
-    speed: position.hasSpeed ? normalizeSpeed(position.speed) : null,
-    heading:
-        position.hasHeading &&
-            position.heading.isFinite &&
-            position.heading >= 0 &&
-            position.heading < 360
-        ? position.heading
-        : null,
-    speedAccuracy: position.hasSpeedAccuracy
-        ? normalizeSpeed(position.speedAccuracy)
-        : null,
-    headingAccuracy: position.hasHeadingAccuracy
-        ? normalizeSpeed(position.headingAccuracy)
-        : null,
-  );
+  static LocationFix normalizePosition(Position position, {String? streamId}) =>
+      LocationFix(
+        point: RoutePoint(
+          position.latitude,
+          position.longitude,
+          elevation: position.hasAltitude && position.altitude.isFinite
+              ? position.altitude
+              : null,
+        ),
+        timestamp: position.timestamp,
+        accuracy: position.hasAccuracy ? position.accuracy : double.nan,
+        speed: position.hasSpeed ? normalizeSpeed(position.speed) : null,
+        heading:
+            position.hasHeading &&
+                position.heading.isFinite &&
+                position.heading >= 0 &&
+                position.heading < 360
+            ? position.heading
+            : null,
+        speedAccuracy: position.hasSpeedAccuracy
+            ? normalizeSpeed(position.speedAccuracy)
+            : null,
+        headingAccuracy: position.hasHeadingAccuracy
+            ? normalizeSpeed(position.headingAccuracy)
+            : null,
+        elapsedRealtimeNanos: position is AndroidPosition
+            ? position.elapsedRealtimeNanos
+            : null,
+        receivedElapsedRealtimeNanos: position is AndroidPosition
+            ? position.receivedElapsedRealtimeNanos
+            : null,
+        locationStreamId: streamId,
+      );
   @override
   Future<void> prepare() async {
     // À appeler depuis un bouton visible, avant de lancer le service Android.
@@ -133,10 +141,11 @@ class DeviceLocationSource implements LocationSource {
   Stream<LocationFix> get fixes {
     if (_controller != null) return _controller!.stream;
     _controller = StreamController<LocationFix>();
+    final streamId = 'location-${DateTime.now().microsecondsSinceEpoch}';
     _subscription =
         Geolocator.getPositionStream(locationSettings: profileSettings).listen(
           (position) {
-            _controller?.add(normalizePosition(position));
+            _controller?.add(normalizePosition(position, streamId: streamId));
           },
           onError: (Object error, StackTrace stack) {
             _controller?.addError(error, stack);

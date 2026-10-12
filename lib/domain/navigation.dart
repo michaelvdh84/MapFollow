@@ -197,7 +197,7 @@ class NavigationEngine {
     }
     final elapsed = _previous == null
         ? 1.0
-        : fix.timestamp.difference(_previous!.timestamp).inMilliseconds / 1000;
+        : fix.intervalSince(_previous!).inMicroseconds / 1e6;
     final moved = _previous == null
         ? 0.0
         : distanceBetween(_previous!.point, fix.point);

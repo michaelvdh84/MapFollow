@@ -186,7 +186,7 @@ class OverpassMapGuidanceSource implements MapGuidanceSource {
     request.followRedirects = false;
     request.headers.set(
       HttpHeaders.userAgentHeader,
-      'MapFollow/0.4 (personal route guidance)',
+      'MapFollow (personal route guidance)',
     );
     request.headers.contentType = ContentType(
       'application',

@@ -2,6 +2,10 @@
 
 Remplir une copie pour chaque appareil et build. Utiliser un parcours synthétique lorsque possible. Ne joignez pas de trace réelle à ce rapport.
 
+Pour `0.5.2+7`, suivre aussi le [protocole de l'audit Android](android-location-audit.md) : essais comparables 1 s / 0,5 s, âge de livraison natif et cadence monotone, arrêt, marche lente, virages, pause/reprise et écran verrouillé avec musique. La Garmin reste une comparaison secondaire ; ajouter une longueur indépendante connue pour l'erreur de distance absolue. Les comparaisons 0.5.0 et le rejeu 0.5.1 ci-dessous restent historiques.
+
+Livraison du 12 octobre : APK final `0.5.2+7` installé sans effacement sur S23 Ultra SM-S918B / Android 16, version du paquet confirmée. Hot reload Flutter réussi sans erreur remontée avant le remplacement final. Aucun Run d'essai ajouté, aucun changement de permission ou de préférence imposé. Le S21 n'était pas connecté à ADB pendant cet audit ; il conserve la version précédente. La réception GPS réelle, les paramètres Samsung, l'affichage POC physique final et les mesures terrain ne sont pas validés par cette installation.
+
 ## Contexte
 
 - Date/heure :
@@ -111,3 +115,13 @@ Sur le S23, Developer est accessible et l'intervalle 0,5 s est sauvegardé, puis
 La dernière sortie utilisateur avait YouTube Music, Bluetooth, casque et Garmin connectés, avec une baisse déclarée de 4 points de batterie du téléphone entier. MapFollow a démarré 17,4 s avant les premières données Garmin et terminé 19,9 s après. La longueur totale MapFollow est 7 270,7 m ; limitée aux instants Garmin elle devient 7 223,9 m. La montre affichait 7,02 km : écart commun +2,91 %. La longueur géométrique Garmin est distincte, 6 956,9 m, soit +3,84 % GPX-à-GPX. La séparation temporelle interpolée entre les traces est de 6,2 m en médiane et 9,7 m au percentile 95 ; elle ne mesure pas une erreur absolue par rapport au terrain. La cadence MapFollow médiane est 1,0 s et le percentile 95 est 1,082 s. Aucune coordonnée n'est conservée dans ce compte rendu.
 
 Ces données proviennent de la version précédente. Pour valider `0.5.0+5`, effectuer une nouvelle sortie avec Précision, Developer 0,5 s et Diagnostic, en démarrant/arrêtant les deux appareils aux mêmes instants. Noter séparément compteur Garmin, longueur GPX, distance MapFollow, cadence réellement reçue, batterie, recharge et éventuelles interruptions. Viser ≤2 % sur la période comparable ; cette cible n'est pas encore validée. Exporter explicitement GPX et logs après la course ; les positions des logs sont décochées par défaut. Le suivi prolongé écran verrouillé avec YouTube Music reste à vérifier sur chaque téléphone.
+
+### Sortie S21 du 12 octobre 2026
+
+Les GPX Garmin/MapFollow et logs Diagnostic sont fournis explicitement ; même personne, téléphone dans une poche du vêtement au niveau de la jambe, lancement du téléphone dans la maison puis Garmin au début de la course. Session Précision, 500 ms, `kalman-cadence-2`, un segment, 3 134 mesures reçues, 3 129 points enregistrés, cadence médiane 0,673 s. Batterie 47 → 42 % sans recharge ni interruption signalée. Distance Garmin affichée 5,03 km ; GPX Garmin reconstruit 5 067,2 m ; MapFollow complet 5 277,0 m, commun 5 208,3 m (+3,54 % face au compteur). La cible ≤2 % échoue sur cette sortie. Le filtre ajoute 140,0 m face aux positions brutes sur les instants communs ; l'effet persiste après exclusion du début. Voir [l'analyse et les limites des rejeux](comparison-s21-2026-10-12.md). Le guidage, les conditions écran/audio et l'exactitude absolue des positions ne sont pas validés par ces exports.
+
+### Installation de la correction 0.5.1+6 — 12 octobre 2026
+
+Le même APK final est installé par `adb install -r` sur S23 Ultra `SM-S918B` (Android 16) et S21 5G `SM-G991B` (Android 15), sans désinstallation, suppression de course ou demande de nouvelle permission. Les deux paquets déclarent `0.5.1`, code 6. Le numéro affiché par POC provient du paquet, avec un test UI de valeur dynamique ; sa lecture physique reste à confirmer, car le S23 s'est verrouillé et MapFollow n'est pas resté au premier plan sur le S21. Des hot reload Flutter MCP réussissent sur les deux appareils, sans erreur remontée pendant la connexion. Aucun nouveau Run réel ou export de coordonnées n'est déclenché pour ce contrôle.
+
+Le rejeu du code final donne 5 015,8 m communs, −0,28 % face au compteur Garmin ; la course originale conserve 5 277,0 m. Cela justifie une nouvelle sortie comparative avec `0.5.1+6`, 0,5 s et Diagnostic, mais ne valide pas encore la précision ou la consommation du nouvel enregistrement.

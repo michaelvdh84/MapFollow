@@ -12,9 +12,20 @@ void main() {
       final controller = RunController(
         repository: repository,
         voice: FakeVoice(),
+        readApplicationVersion: () async => '9.8.7+42',
       );
       await controller.initialize();
       await tester.pumpWidget(MapFollowApp(controller: controller));
+      expect(find.text('Importer GPX, TCX ou PWX'), findsOneWidget);
+      await tester.tap(find.text('POC'));
+      await tester.pumpAndSettle();
+      expect(find.text('9.8.7+42'), findsOneWidget);
+      expect(find.text('0.3.0'), findsNothing);
+      Navigator.of(
+        tester.element(find.text('9.8.7+42')),
+        rootNavigator: true,
+      ).pop();
+      await tester.pumpAndSettle();
       expect(find.text('Importer GPX, TCX ou PWX'), findsOneWidget);
       await tester.tap(find.text('Historique'));
       await tester.pumpAndSettle();

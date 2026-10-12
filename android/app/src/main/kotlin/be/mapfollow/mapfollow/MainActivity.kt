@@ -75,6 +75,22 @@ class MainActivity : FlutterActivity() {
     }
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mapfollow/appInfo")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "getVersion") {
+                    result.notImplemented()
+                } else {
+                    @Suppress("DEPRECATION")
+                    val info = packageManager.getPackageInfo(packageName, 0)
+                    @Suppress("DEPRECATION")
+                    val number = if (Build.VERSION.SDK_INT >= 28) info.longVersionCode
+                        else info.versionCode.toLong()
+                    result.success(mapOf(
+                        "versionName" to info.versionName,
+                        "buildNumber" to number.toString()
+                    ))
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mapfollow/battery")
             .setMethodCallHandler { call, result ->
                 if (call.method != "getSnapshot") {

@@ -12,6 +12,7 @@ import '../data/repository.dart';
 import '../data/route_importer.dart';
 import '../data/voice_service.dart';
 import '../data/battery_source.dart';
+import '../data/app_info_source.dart';
 import '../data/diagnostic_exporter.dart';
 import '../data/map_guidance_source.dart';
 import '../domain/run_diagnostics.dart';
@@ -42,16 +43,20 @@ class RunController extends ChangeNotifier {
     Future<void> Function()? requestNotifications,
     BatterySource? batterySource,
     MapGuidanceSource? mapGuidanceSource,
+    Future<String?> Function()? readApplicationVersion,
   }) : _locationFactory = locationFactory,
        _requestNotifications = requestNotifications ?? _androidNotifications,
        _batterySource = batterySource ?? AndroidBatterySource(),
-       _mapGuidanceSource = mapGuidanceSource ?? OverpassMapGuidanceSource();
+       _mapGuidanceSource = mapGuidanceSource ?? OverpassMapGuidanceSource(),
+       _readApplicationVersion =
+           readApplicationVersion ?? AndroidAppInfoSource().readVersion;
   final RunRepository repository;
   final VoiceService voice;
   final LocationSourceFactory? _locationFactory;
   final Future<void> Function() _requestNotifications;
   final BatterySource _batterySource;
   final MapGuidanceSource _mapGuidanceSource;
+  final Future<String?> Function() _readApplicationVersion;
   final LocationFilter _locationFilter = LocationFilter();
   DateTime? _lastBatteryPoll;
   List<domain.Route> routes = [];
@@ -65,6 +70,7 @@ class RunController extends ChangeNotifier {
   domain.LocationFix? lastFix;
   NavigationUpdate? navigation;
   bool initialized = false, busy = false;
+  String? applicationVersion;
   String? error;
   String lastAnnouncement = 'Aucune annonce';
   NavigationEngine? _engine;
@@ -155,6 +161,7 @@ class RunController extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
+    applicationVersion = await _readApplicationVersion();
     routes = await repository.listRoutes();
     settings = await repository.loadSettings();
     history = await repository.listRuns();
@@ -472,6 +479,9 @@ class RunController extends ChangeNotifier {
         run.id,
         _safeDiagnostic({
           'event': 'location',
+          'filterVersion': run.simulated
+              ? 'simulation'
+              : LocationFilter.version,
           'receivedAt': receivedAt.toIso8601String(),
           'raw': fix.toJson(),
           'processed': processed?.toJson(),
@@ -545,7 +555,7 @@ class RunController extends ChangeNotifier {
     if (previous == null ||
         moved >= (run.simulated ? mathRecordingThreshold(fix.accuracy) : .75)) {
       if (previous != null &&
-          fix.timestamp.difference(previous.timestamp).inMilliseconds > 10000) {
+          fix.intervalSince(previous) > LocationFilter.gap) {
         run.segments.add([]);
       } else {
         run.distance += moved;
@@ -563,6 +573,9 @@ class RunController extends ChangeNotifier {
         heading: fix.heading,
         speedAccuracy: fix.speedAccuracy,
         headingAccuracy: fix.headingAccuracy,
+        elapsedRealtimeNanos: fix.elapsedRealtimeNanos,
+        receivedElapsedRealtimeNanos: fix.receivedElapsedRealtimeNanos,
+        locationStreamId: fix.locationStreamId,
       );
       run.segments.last.add(recordedFix);
       await repository.appendFix(run, recordedFix, run.segments.length - 1);

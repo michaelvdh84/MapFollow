@@ -86,7 +86,8 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () => showLicensePage(
               context: context,
               applicationName: 'MapFollow',
-              applicationVersion: '0.3.0',
+              applicationVersion:
+                  c.applicationVersion ?? 'Version indisponible',
               applicationLegalese:
                   'Carte : © OpenStreetMap contributors · ODbL',
             ),

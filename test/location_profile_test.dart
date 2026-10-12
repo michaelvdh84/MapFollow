@@ -8,6 +8,36 @@ import 'package:mapfollow/domain/navigation.dart';
 void main() {
   tearDown(() => debugDefaultTargetPlatformOverride = null);
   test(
+    'native monotonic metadata survives mapping and persistence without GNSS counts',
+    () {
+      final position = AndroidPosition.fromMap({
+        'latitude': 0.0,
+        'longitude': 0.0,
+        'timestamp': DateTime.utc(2026).millisecondsSinceEpoch,
+        'accuracy': 3.0,
+        'elapsed_realtime_nanos': 123000000000,
+        'received_elapsed_realtime_nanos': 123200000000,
+        'gnss_satellite_count': 15.0,
+      });
+      final fix = DeviceLocationSource.normalizePosition(
+        position,
+        streamId: 'synthetic-stream',
+      );
+      final restored = LocationFix.fromJson(fix.toJson());
+      expect(restored.elapsedRealtimeNanos, 123000000000);
+      expect(restored.receivedElapsedRealtimeNanos, 123200000000);
+      expect(restored.locationStreamId, 'synthetic-stream');
+      expect(fix.toJson().keys.any((key) => key.contains('satellite')), false);
+      final legacy = LocationFix.fromJson({
+        'point': const RoutePoint(0, 0).toJson(),
+        'timestamp': DateTime.utc(2026).toIso8601String(),
+        'accuracy': 3.0,
+      });
+      expect(legacy.elapsedRealtimeNanos, null);
+      expect(legacy.locationStreamId, null);
+    },
+  );
+  test(
     'custom interval uses milliseconds and disables displacement suppression',
     () {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;

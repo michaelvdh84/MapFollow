@@ -20,6 +20,78 @@ void main() {
     expect(LocationQuality.accepts(fix(50, 4), now: now), isTrue);
   });
 
+  LocationFix monotonicFix(
+    int measured,
+    int received, {
+    DateTime? at,
+    String stream = 'synthetic',
+  }) => LocationFix(
+    point: const RoutePoint(0, 0),
+    timestamp: at ?? now,
+    accuracy: 3,
+    elapsedRealtimeNanos: measured,
+    receivedElapsedRealtimeNanos: received,
+    locationStreamId: stream,
+  );
+  test('monotonic age detects stale fixes despite a recent UTC timestamp', () {
+    expect(
+      LocationQuality.rejectionReason(
+        monotonicFix(1000000000, 12000000000),
+        now: now,
+      ),
+      'invalid_age',
+    );
+    expect(
+      LocationQuality.accepts(
+        monotonicFix(
+          1000000000,
+          1100000000,
+          at: now.subtract(const Duration(hours: 1)),
+        ),
+        now: now,
+      ),
+      true,
+    );
+  });
+  test(
+    'monotonic duplicates and reordering are rejected despite advancing UTC',
+    () {
+      final previous = monotonicFix(2000000000, 2100000000);
+      for (final nanos in [2000000000, 1500000000]) {
+        expect(
+          LocationQuality.rejectionReason(
+            monotonicFix(
+              nanos,
+              2200000000,
+              at: now.add(const Duration(seconds: 1)),
+            ),
+            now: now,
+            previous: previous,
+          ),
+          'non_monotonic',
+        );
+      }
+    },
+  );
+  test('monotonic intervals never cross subscriptions or reboot recovery', () {
+    final previous = monotonicFix(90000000000, 90100000000);
+    final next = monotonicFix(
+      1000000000,
+      1100000000,
+      at: now.add(const Duration(seconds: 1)),
+      stream: 'new-boot',
+    );
+    expect(next.intervalSince(previous), const Duration(seconds: 1));
+    expect(
+      LocationQuality.accepts(
+        next,
+        now: now.add(const Duration(seconds: 1)),
+        previous: previous,
+      ),
+      true,
+    );
+  });
+
   test(
     'rejects invalid coordinates, poor accuracy, and stale/future fixes',
     () {

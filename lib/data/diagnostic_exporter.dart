@@ -40,7 +40,10 @@ class DiagnosticExporter {
     final timestamps = <DateTime>[];
     final receptionTimes = <DateTime>[];
     final accuracies = <double>[];
+    final nativeTimes = <String, List<DateTime>>{};
+    final deliveryAges = <double>[];
     final reasons = <String, int>{};
+    final filterVersions = <String, int>{};
     for (final e in locations) {
       final raw = e['raw'];
       if (raw is Map) {
@@ -48,11 +51,36 @@ class DiagnosticExporter {
         if (time != null) timestamps.add(time);
         final accuracy = BatterySample.finite(raw['accuracy']);
         if (accuracy != null && accuracy >= 0) accuracies.add(accuracy);
+        final stream = raw['locationStreamId'];
+        final measured = raw['elapsedRealtimeNanos'];
+        final received = raw['receivedElapsedRealtimeNanos'];
+        if (stream is String && measured is int) {
+          nativeTimes
+              .putIfAbsent(stream, () => [])
+              .add(
+                DateTime.fromMicrosecondsSinceEpoch(
+                  measured ~/ 1000,
+                  isUtc: true,
+                ),
+              );
+        }
+        if (measured is int && received is int && received >= measured) {
+          deliveryAges.add((received - measured) / 1e6);
+        }
       }
       final received = DateTime.tryParse(e['receivedAt']?.toString() ?? '');
       if (received != null) receptionTimes.add(received);
       final reason = e['decision']?.toString() ?? 'unknown';
       reasons.update(reason, (count) => count + 1, ifAbsent: () => 1);
+      final filterVersion =
+          e['filterVersion']?.toString() ??
+          run.locationFilterVersion ??
+          'unknown';
+      filterVersions.update(
+        filterVersion,
+        (count) => count + 1,
+        ifAbsent: () => 1,
+      );
     }
     final battery = run.batterySamples;
     final first = battery.isEmpty ? null : battery.first.levelPercent;
@@ -60,12 +88,16 @@ class DiagnosticExporter {
     return {
       'requestedLocationIntervalMillis': run.requestedLocationIntervalMillis,
       'locationFilterVersion': run.locationFilterVersion ?? 'unknown',
+      'observedFilterVersions': filterVersions,
       'receivedFixCount': locations.length,
       'acceptedFixCount': locations.where((e) => e['accepted'] == true).length,
       'recordedFixCount': locations.where((e) => e['recorded'] == true).length,
       'filterDecisions': reasons,
       'measurementCadenceSeconds': _cadence(timestamps),
       'receptionCadenceSeconds': _cadence(receptionTimes),
+      // Separate groups prevent comparing clocks across pause/recovery/reboot.
+      'monotonicMeasurementCadenceSeconds': _groupedCadence(nativeTimes.values),
+      'nativeDeliveryAgeMillis': _distribution(deliveryAges),
       'accuracyMeters': _distribution(accuracies),
       'segmentCount': run.segments.where((s) => s.isNotEmpty).length,
       'batteryDropPercentagePoints': first == null || last == null
@@ -80,18 +112,23 @@ class DiagnosticExporter {
     };
   }
 
-  Map<String, dynamic> _cadence(List<DateTime> times) {
+  Map<String, dynamic> _cadence(List<DateTime> times) =>
+      _groupedCadence([times]);
+
+  Map<String, dynamic> _groupedCadence(Iterable<List<DateTime>> groups) {
     final intervals = <double>[];
     var nonMonotonic = 0;
     var gaps = 0;
-    for (var i = 1; i < times.length; i++) {
-      final seconds = times[i].difference(times[i - 1]).inMicroseconds / 1e6;
-      if (seconds <= 0) {
-        nonMonotonic++;
-      } else if (seconds > 10) {
-        gaps++;
-      } else {
-        intervals.add(seconds);
+    for (final times in groups) {
+      for (var i = 1; i < times.length; i++) {
+        final seconds = times[i].difference(times[i - 1]).inMicroseconds / 1e6;
+        if (seconds <= 0) {
+          nonMonotonic++;
+        } else if (seconds > 10) {
+          gaps++;
+        } else {
+          intervals.add(seconds);
+        }
       }
     }
     return {
